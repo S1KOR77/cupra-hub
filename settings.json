@@ -1,0 +1,288 @@
+{
+  "version": "2.0",
+  "last_updated": "2026-03-05",
+  "valid_from": "2026-03-01",
+  "valid_to": "2026-03-31",
+
+  "margin_config": {
+    "dealer_base_discount_pct": 6.0,
+    "margin_ok_min": -0.6,
+    "margin_ok_max": 7.0,
+    "margin_great": 4.0,
+    "margin_warn": 2.0,
+    "margin_bad": 0.0,
+    "cache_ok_margin_min": -0.6,
+    "cache_ok_margin_max": 7.0,
+    "always_apply_rebate": true
+  },
+
+  "rebates": [
+    {
+      "id": "leon_2025_benzyna_std",
+      "model": "leon",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "KUD/KUG",
+      "amount": 23000,
+      "name": "Wsparcie 23 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "leon_2025_benzyna_promo",
+      "model": "leon",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "KUD/KUG",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + finansowanie promocyjne L3",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "leon_vz_2026_benzyna_std",
+      "model": "leon",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "VZ KUDC/KUGC",
+      "amount": 25000,
+      "name": "Wsparcie 25 000 zł + fin. standardowe (Leon VZ)",
+      "type": "standardowe",
+      "is_vz": true,
+      "active": true
+    },
+    {
+      "id": "leon_vz_2026_benzyna_promo",
+      "model": "leon",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "VZ KUDC/KUGC",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + fin. promocyjne L1 REN/L1 (Leon VZ)",
+      "type": "promocyjne",
+      "is_vz": true,
+      "active": true
+    },
+    {
+      "id": "leon_2026_benzyna_std",
+      "model": "leon",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "KUD/KUG",
+      "amount": 20000,
+      "name": "Wsparcie 20 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+
+    {
+      "id": "formentor_2025_phev_std",
+      "model": "formentor",
+      "year": 2025,
+      "fuel": "PHEV",
+      "variant": "KMPB0Y/KMPC1Y",
+      "amount": 30000,
+      "name": "Wsparcie 30 000 zł + fin. standardowe (PHEV)",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "formentor_2025_phev_promo",
+      "model": "formentor",
+      "year": 2025,
+      "fuel": "PHEV",
+      "variant": "KMPB0Y/KMPC1Y",
+      "amount": 20000,
+      "name": "Wsparcie 20 000 zł + fin. promocyjne L1 REN/L3 (PHEV)",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "formentor_2025_benzyna_std",
+      "model": "formentor",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "KMP",
+      "amount": 15000,
+      "name": "Wsparcie 15 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "formentor_2025_benzyna_promo",
+      "model": "formentor",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "KMP",
+      "amount": 5000,
+      "name": "Wsparcie 5 000 zł + fin. promocyjne L1 REN/L3",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "formentor_2026_benzyna_std",
+      "model": "formentor",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "KMP",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "formentor_2026_phev_promo",
+      "model": "formentor",
+      "year": 2026,
+      "fuel": "PHEV",
+      "variant": "KMPB0Y/VZ KMPC/KMPR",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + fin. promocyjne L1 REN/L3 (PHEV 2026)",
+      "type": "promocyjne",
+      "active": true
+    },
+
+    {
+      "id": "terramar_2025_benzyna_std",
+      "model": "terramar",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "all",
+      "amount": 15000,
+      "name": "Wsparcie 15 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "terramar_2025_benzyna_promo",
+      "model": "terramar",
+      "year": 2025,
+      "fuel": "benzyna",
+      "variant": "all",
+      "amount": 5000,
+      "name": "Wsparcie 5 000 zł + fin. promocyjne L1 REN/L1 RP26",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "terramar_2026_benzyna_std",
+      "model": "terramar",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "all",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "terramar_2026_benzyna_promo",
+      "model": "terramar",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "all",
+      "amount": 10000,
+      "name": "Wsparcie 10 000 zł + fin. promocyjne L1 REN/L1",
+      "type": "promocyjne",
+      "active": true
+    },
+
+    {
+      "id": "tavascan_2024_elektryk_promo_my24",
+      "model": "tavascan",
+      "year": 2024,
+      "fuel": "elektryk",
+      "variant": "KR1 MY24",
+      "amount": 38300,
+      "name": "Wsparcie 38 300 zł + fin. promocyjne L3 (MY24)",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "tavascan_2024_elektryk_promo_my25",
+      "model": "tavascan",
+      "year": 2024,
+      "fuel": "elektryk",
+      "variant": "KR1 MY25",
+      "amount": 33000,
+      "name": "Wsparcie 33 000 zł + fin. promocyjne L3 (MY25 prod 2024)",
+      "type": "promocyjne",
+      "active": true
+    },
+    {
+      "id": "tavascan_2024_elektryk_vz_std",
+      "model": "tavascan",
+      "year": 2024,
+      "fuel": "elektryk",
+      "variant": "VZ KR1 MY24",
+      "amount": 18500,
+      "name": "Wsparcie 24% + 18 500 zł + fin. standardowe (VZ MY24)",
+      "type": "standardowe",
+      "extra_pct": 24,
+      "is_vz": true,
+      "active": true
+    },
+    {
+      "id": "tavascan_2024_elektryk_std_19pct",
+      "model": "tavascan",
+      "year": 2024,
+      "fuel": "elektryk",
+      "variant": "KR1 MY24",
+      "amount": 0,
+      "extra_pct": 19,
+      "name": "Wsparcie 19% + finansowanie standardowe (MY24 non-VZ)",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "tavascan_2025_elektryk_std",
+      "model": "tavascan",
+      "year": 2025,
+      "fuel": "elektryk",
+      "variant": "KR1 MY25",
+      "amount": 50000,
+      "name": "Wsparcie 50 000 zł + finansowanie standardowe (MY25)",
+      "type": "standardowe",
+      "active": true
+    },
+
+    {
+      "id": "born_2026_elektryk_std",
+      "model": "born",
+      "year": 2026,
+      "fuel": "elektryk",
+      "variant": "K11 MY26",
+      "amount": 35000,
+      "name": "Wsparcie 35 000 zł + finansowanie standardowe",
+      "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "born_2026_elektryk_std_cp8",
+      "model": "born",
+      "year": 2026,
+      "fuel": "elektryk",
+      "variant": "K11 MY26 CP8",
+      "amount": 45000,
+      "name": "Wsparcie 45 000 zł + fin. standardowe (CP8 do 20.02.2026)",
+      "type": "standardowe",
+      "active": false
+    }
+  ],
+
+  "home_dealer": "MOTORPOL WROCŁAW",
+  "dealer_percentages": {
+    "leon": {"korekta_vgp": 13.0, "korekta_vgp_promo": 12.0, "dealer_share": 6.0, "total_rebate_pct": 18.0},
+    "formentor": {"korekta_vgp": 9.0, "korekta_vgp_promo": 8.0, "dealer_share": 6.0, "total_rebate_pct": 15.0},
+    "terramar": {"korekta_vgp": 9.0, "korekta_vgp_promo": 8.0, "dealer_share": 6.0, "total_rebate_pct": 15.0},
+    "born": {"korekta_vgp": 13.0, "korekta_vgp_promo": 12.0, "dealer_share": 6.0, "total_rebate_pct": 18.0},
+    "tavascan": {"korekta_vgp": 13.0, "korekta_vgp_promo": 12.0, "dealer_share": 6.0, "total_rebate_pct": 18.0}
+  },
+
+  "ui_config": {
+    "auto_refresh_interval": 5000,
+    "theme": "dark",
+    "accent_color": "#00a550",
+    "available_accents": ["#00a550", "#2196F3", "#FF5722", "#9C27B0", "#FF9800", "#E91E63", "#00BCD4", "#4CAF50"]
+  }
+}

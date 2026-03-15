@@ -1,0 +1,2816 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPRA HUB</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+    --bg-main: #0a0a0a;
+    --bg-card: rgba(255,255,255,0.03);
+    --bg-card-hover: rgba(255,255,255,0.06);
+    --border-card: rgba(177,130,89,0.25);
+    --border-subtle: rgba(255,255,255,0.06);
+    --copper: #b18259;
+    --copper-light: #c9a47a;
+    --copper-glow: rgba(177,130,89,0.15);
+    --text-primary: #ffffff;
+    --text-secondary: #999999;
+    --text-muted: #666666;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --blue: #60a5fa;
+    --purple: #a78bfa;
+    --accent: #b18259;
+    --accent-light: #c9a47a;
+    --accent-glow: rgba(177,130,89,0.15);
+    --accent-border: rgba(177,130,89,0.25);
+    --accent-border-hover: rgba(177,130,89,0.4);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+/* NAV */
+.nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    height: 56px;
+    background: rgba(10,10,10,0.95);
+    border-bottom: 1px solid var(--accent-border);
+    backdrop-filter: blur(20px);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+}
+.nav-brand {
+    font-size: 1.1rem; font-weight: 700; letter-spacing: 0.1em;
+    color: var(--accent);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.nav-links { display: flex; gap: 4px; }
+.nav-link {
+    padding: 8px 14px; font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-secondary); cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+.nav-link:hover { color: var(--text-primary); }
+.nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-right { display: flex; align-items: center; gap: 12px; }
+.nav-sync { font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; }
+.nav-search {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 6px 12px; color: var(--text-primary);
+    font-size: 0.75rem; width: 140px; outline: none;
+    transition: border-color 0.3s;
+}
+.nav-search:focus { border-color: var(--accent-border); }
+.btn-export {
+    background: var(--accent); color: #fff; border: none;
+    padding: 6px 16px; border-radius: 6px; font-size: 0.7rem;
+    font-weight: 600; cursor: pointer; letter-spacing: 0.05em;
+    transition: all 0.3s; text-transform: uppercase;
+}
+.btn-export:hover { background: var(--accent-light); }
+.theme-dots { display: flex; gap: 6px; align-items: center; }
+.theme-dot {
+    width: 14px; height: 14px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; transition: all 0.3s;
+}
+.theme-dot:hover, .theme-dot.active { border-color: #fff; transform: scale(1.2); }
+
+/* MAIN */
+.main { margin-top: 56px; padding: 24px; max-width: 1600px; margin-left: auto; margin-right: auto; }
+.section { display: none; }
+.section.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* CARDS */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-border);
+    border-radius: 12px;
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+.card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-border-hover);
+    box-shadow: 0 0 20px rgba(177,130,89,0.1);
+}
+
+/* KPI ROW */
+.kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-border);
+    border-radius: 12px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.kpi-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 4px; border-radius: 12px 0 0 12px;
+}
+.kpi-card.green::before { background: var(--green); }
+.kpi-card.blue::before { background: var(--blue); }
+.kpi-card.copper::before { background: var(--accent); }
+.kpi-card.red::before { background: var(--red); }
+.kpi-card.purple::before { background: var(--purple); }
+.kpi-card.yellow::before { background: var(--yellow); }
+.kpi-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-border-hover);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+.kpi-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;
+}
+.kpi-value { font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.kpi-sub { font-size: 0.75rem; color: var(--text-muted); }
+
+/* MODEL CARDS ROW */
+.model-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+.model-card {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-border);
+    border-radius: 12px;
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    min-height: 250px;
+    display: flex; flex-direction: column;
+}
+.model-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-border-hover);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+.model-icon { font-size: 2rem; margin-bottom: 12px; }
+.model-name {
+    font-size: 0.85rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 12px; color: var(--accent-light);
+}
+.model-stat { display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px solid var(--border-subtle); font-size: 0.8rem; }
+.model-stat-label { color: var(--text-secondary); }
+.model-stat-val { font-weight: 600; }
+
+/* SECTION HEADERS */
+.section-header {
+    font-size: 1.1rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 20px; color: var(--text-primary);
+    display: flex; align-items: center; gap: 12px;
+}
+.section-header span { color: var(--accent); }
+
+/* TAB SWITCHER */
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+.tab {
+    padding: 8px 20px; font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary); cursor: pointer;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: 8px; transition: all 0.3s;
+}
+.tab:hover { color: var(--text-primary); border-color: var(--accent-border); }
+.tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-glow); }
+
+/* TABLE */
+.table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--accent-border); background: var(--bg-card); }
+table { width: 100%; border-collapse: collapse; }
+th {
+    padding: 12px 14px; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.05em; font-weight: 600; color: var(--text-secondary);
+    background: rgba(255,255,255,0.02); text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer; white-space: nowrap; user-select: none;
+}
+th:hover { color: var(--accent); }
+td {
+    padding: 10px 14px; font-size: 0.8rem; border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+}
+tr:hover { background: rgba(255,255,255,0.02); }
+.sort-arrow { font-size: 0.6rem; margin-left: 4px; opacity: 0.5; }
+th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+/* FILTERS */
+.filters {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
+    padding: 16px; background: var(--bg-card); border: 1px solid var(--accent-border);
+    border-radius: 12px;
+}
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; font-weight: 600; }
+.filter-select, .filter-input {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 6px 10px; color: var(--text-primary);
+    font-size: 0.75rem; outline: none; min-width: 120px;
+}
+.filter-select option { background: #1a1a1a; }
+.filter-select:focus, .filter-input:focus { border-color: var(--accent-border); }
+.btn {
+    padding: 6px 16px; border-radius: 6px; font-size: 0.7rem; font-weight: 600;
+    cursor: pointer; transition: all 0.3s; border: 1px solid var(--accent-border);
+    background: transparent; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.btn:hover { background: var(--accent-glow); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-light); }
+
+/* BADGES */
+.badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); }
+.badge-yellow { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-orange { background: rgba(251,146,60,0.15); color: #fb923c; }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-copper { background: var(--accent-glow); color: var(--accent); }
+.badge-edited { background: rgba(251,191,36,0.1); color: var(--yellow); font-size: 0.6rem; }
+
+/* PAGINATION */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+.page-btn {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid var(--border-subtle);
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+    font-size: 0.75rem; transition: all 0.3s;
+}
+.page-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+.page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-info { font-size: 0.75rem; color: var(--text-muted); }
+
+/* MODAL */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(4px); z-index: 2000; display: flex;
+    align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal {
+    background: #111; border: 1px solid var(--accent-border);
+    border-radius: 16px; max-width: 700px; width: 100%; max-height: 85vh;
+    overflow-y: auto; padding: 32px; position: relative;
+}
+.modal-close {
+    position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
+    border-radius: 50%; border: 1px solid var(--border-subtle);
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+    font-size: 1.1rem; display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s;
+}
+.modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.modal-title {
+    font-size: 1.2rem; font-weight: 700; margin-bottom: 24px;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-light);
+}
+.modal-section { margin-bottom: 20px; }
+.modal-section-title {
+    font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted);
+    letter-spacing: 0.05em; margin-bottom: 10px; font-weight: 600;
+}
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-field { display: flex; flex-direction: column; gap: 2px; }
+.modal-field-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; }
+.modal-field-value { font-size: 0.85rem; font-weight: 500; }
+.margin-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.05); margin-top: 8px; overflow: hidden; }
+.margin-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+
+/* CHARTS */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-card {
+    background: var(--bg-card); border: 1px solid var(--accent-border);
+    border-radius: 12px; padding: 20px; backdrop-filter: blur(10px);
+}
+.chart-card:hover { background: var(--bg-card-hover); border-color: var(--accent-border-hover); }
+.chart-title {
+    font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 16px; color: var(--text-secondary);
+}
+.chart-container { position: relative; height: 280px; }
+
+/* INSIGHTS CARDS */
+.insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.insight-card {
+    background: var(--bg-card); border: 1px solid var(--accent-border);
+    border-radius: 12px; padding: 24px; backdrop-filter: blur(10px);
+    transition: all 0.3s; min-height: 300px;
+}
+.insight-card:hover {
+    background: var(--bg-card-hover); border-color: var(--accent-border-hover);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+.insight-icon { font-size: 2rem; margin-bottom: 12px; }
+.insight-title {
+    font-size: 0.85rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 16px; color: var(--accent-light);
+}
+.insight-list { list-style: none; }
+.insight-list li {
+    padding: 8px 0; border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.8rem; display: flex; justify-content: space-between;
+}
+.insight-list li:last-child { border-bottom: none; }
+.insight-btn {
+    margin-top: 12px; padding: 6px 14px; border-radius: 6px;
+    background: var(--accent-glow); border: 1px solid var(--accent-border);
+    color: var(--accent); font-size: 0.7rem; font-weight: 600;
+    cursor: pointer; transition: all 0.3s; text-transform: uppercase;
+}
+.insight-btn:hover { background: var(--accent); color: #fff; }
+
+/* RABATY */
+.rabaty-form {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 20px; padding: 20px;
+    background: var(--bg-card); border: 1px solid var(--accent-border);
+    border-radius: 12px;
+}
+.rabaty-form input, .rabaty-form select {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 8px 12px; color: var(--text-primary);
+    font-size: 0.8rem; outline: none;
+}
+.rabaty-form input:focus, .rabaty-form select:focus { border-color: var(--accent-border); }
+
+/* EXCEL */
+.excel-section { text-align: center; padding: 60px 20px; }
+.excel-buttons { display: flex; justify-content: center; gap: 20px; margin-top: 30px; flex-wrap: wrap; }
+.excel-btn {
+    padding: 20px 40px; border-radius: 12px; border: 1px solid var(--accent-border);
+    background: var(--bg-card); color: var(--text-primary); cursor: pointer;
+    transition: all 0.3s; min-width: 250px;
+}
+.excel-btn:hover {
+    background: var(--bg-card-hover); border-color: var(--accent-border-hover);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+.excel-btn-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.excel-btn-title { font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.excel-btn-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
+
+/* EDIT MODAL */
+.edit-form label { display: block; font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; margin-top: 12px; }
+.edit-form input {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 8px 12px; color: var(--text-primary); font-size: 0.9rem; outline: none;
+}
+.edit-form input:focus { border-color: var(--accent-border); }
+.edit-result { margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; }
+.edit-result div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; }
+
+/* MAPA */
+.dealer-mini-modal { max-height: 400px; overflow-y: auto; }
+.dealer-mini-table { width: 100%; }
+.dealer-mini-table td { padding: 6px 10px; font-size: 0.75rem; }
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .model-row { grid-template-columns: repeat(3, 1fr); }
+    .chart-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .model-row { grid-template-columns: 1fr 1fr; }
+    .nav-links { display: none; }
+    .nav { padding: 0 12px; }
+}
+
+/* ---- ADDITIONAL POLISH ---- */
+.kpi-value { transition: color 0.3s ease; }
+.kpi-card:hover .kpi-value { color: var(--accent-light); }
+
+/* Loading state */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    flex-direction: column;
+    gap: 16px;
+}
+.loading-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border-subtle);
+    border-top: 3px solid var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* Smooth number transitions */
+@keyframes countUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.kpi-value { animation: countUp 0.5s ease-out; }
+
+/* Card subtle gradient overlay */
+.model-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 80px;
+    background: linear-gradient(180deg, var(--accent-glow), transparent);
+    border-radius: 12px 12px 0 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.model-card { position: relative; }
+.model-card:hover::after { opacity: 1; }
+
+/* Table row highlight animation */
+tr { transition: background 0.2s ease; }
+tbody tr:nth-child(even) { background: rgba(255,255,255,0.01); }
+
+/* Nav link underline animation */
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; right: 50%;
+    height: 2px;
+    background: var(--accent);
+    transition: all 0.3s ease;
+}
+.nav-link { position: relative; }
+.nav-link.active::after, .nav-link:hover::after { left: 0; right: 0; }
+
+/* Tooltip styling */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+.tooltip::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #222;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    border: 1px solid var(--accent-border);
+}
+.tooltip:hover::after { opacity: 1; }
+
+/* Focus visible for accessibility */
+*:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Smooth section transitions */
+.section { animation-duration: 0.4s; }
+
+/* Better modal animations */
+/* modal transitions handled above */
+.modal {
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.3s ease;
+}
+.modal-overlay.open .modal {
+    transform: scale(1) translateY(0);
+}
+
+/* Badge pulse for new items */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+.badge-green { animation: pulse 2s ease-in-out infinite; }
+
+/* Chart card hover glow */
+.chart-card { transition: all 0.3s ease; }
+.chart-card:hover {
+    box-shadow: 0 4px 24px var(--accent-glow);
+}
+
+/* Insight card number highlight */
+.insight-card .kpi-value { font-size: 1.8rem; }
+
+/* Footer spacer */
+.main { padding-bottom: 40px; }
+
+/* Custom select arrow */
+.filter-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 14px;
+    padding-right: 28px;
+}
+
+/* Zebra striping for insight lists */
+.insight-list li:nth-child(odd) { background: rgba(255,255,255,0.01); padding-left: 8px; padding-right: 8px; border-radius: 4px; }
+
+/* Edit badge styling */
+td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle; }
+
+/* Responsive table scroll indicator */
+.table-wrap { position: relative; }
+.table-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 30px;
+    background: linear-gradient(90deg, transparent, rgba(10,10,10,0.5));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.table-wrap.scrollable::after { opacity: 1; }
+
+/* Mobile nav hamburger */
+@media (max-width: 768px) {
+    .nav-right { gap: 6px; }
+    .nav-sync { display: none; }
+    .nav-search { width: 100px; }
+    .theme-dots { display: none; }
+    .main { padding: 12px; }
+    .kpi-card { padding: 14px; }
+    .kpi-value { font-size: 1.6rem; }
+    .model-card { min-height: 200px; padding: 16px; }
+    .filters { gap: 6px; padding: 12px; }
+    .chart-container { height: 220px; }
+    .modal { padding: 20px; max-height: 90vh; }
+}
+@media (max-width: 480px) {
+    .kpi-row { grid-template-columns: 1fr; }
+    .model-row { grid-template-columns: 1fr; }
+    .insights-grid { grid-template-columns: 1fr; }
+}
+
+/* Print styles */
+@media print {
+    .nav, .filters, .pagination, .btn, .theme-dots { display: none !important; }
+    .main { margin-top: 0; }
+    .section { display: block !important; page-break-after: always; }
+    body { background: white; color: black; }
+    .card, .kpi-card, .model-card, .chart-card, .insight-card, .table-wrap {
+        background: white; border: 1px solid #ddd; box-shadow: none;
+    }
+    td, th { color: black; border-color: #ddd; }
+}
+
+
+/* ---- MARGIN MODE SWITCHER v11 ---- */
+/* mode-btn CSS removed */
+.demo-badge { background: #fbbf24; color: #000; font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 4px; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<!-- NAV BAR -->
+<nav class="nav">
+    <div class="nav-brand">CUPRA HUB</div>
+    <div class="nav-links">
+        <div class="nav-link active" data-section="dashboard">Dashboard</div>
+        <div class="nav-link" data-section="magazyn">Magazyn</div>
+        <div class="nav-link" data-section="analityka">Analityka</div>
+        <div class="nav-link" data-section="insights">Insights</div>
+        <div class="nav-link" data-section="mapa">Mapa Rynkowa</div>
+        <div class="nav-link" data-section="trendy">Trendy</div>
+        <div class="nav-link" data-section="rabaty">Rabaty</div>
+        <div class="nav-link" data-section="excel">Excel</div>
+    </div>
+    <div class="nav-right">
+        <div class="theme-dots">
+            <div class="theme-dot active" style="background:#b18259" data-theme="copper" title="Copper"></div>
+            <div class="theme-dot" style="background:#1e5f74" data-theme="ocean" title="Ocean"></div>
+            <div class="theme-dot" style="background:#2d5a3d" data-theme="forest" title="Forest"></div>
+            <div class="theme-dot" style="background:#c75d2e" data-theme="sunset" title="Sunset"></div>
+        </div>
+
+        <div class="nav-sync">LAST SYNC: <span id="syncTime">-</span></div>
+        <input type="text" class="nav-search" id="globalSearch" placeholder="Szukaj...">
+        <button class="btn-export" onclick="exportAnalityka()">EXPORT</button>
+    </div>
+</nav>
+
+<!-- MODAL OVERLAY -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="main">
+
+<!-- ============ DASHBOARD ============ -->
+<div class="section active" id="sec-dashboard">
+    <div class="kpi-row" id="kpiRow"></div>
+    <div class="model-row" id="modelRow"></div>
+    <!-- Zestawienie Salonow per Model -->
+    <div class="section-header"><span>&#9670;</span> Zestawienie Salon&oacute;w per Model</div>
+    <div class="tabs" id="salonTabs">
+        <div class="tab active" data-stab="all">Wszystkie</div>
+        <div class="tab" data-stab="formentor">Formentor</div>
+        <div class="tab" data-stab="terramar">Terramar</div>
+        <div class="tab" data-stab="leon">Leon</div>
+        <div class="tab" data-stab="born">Born</div>
+        <div class="tab" data-stab="tavascan">Tavascan</div>
+    </div>
+    <div class="table-wrap">
+        <table id="salonTable">
+            <thead>
+                <tr>
+                    <th data-scol="dealer">Salon <span class="sort-arrow">&#9650;</span></th>
+                    <th data-scol="count">Liczba Aut <span class="sort-arrow">&#9650;</span></th>
+                    <th data-scol="avg_margin">&#346;r. Mar&#380;a % <span class="sort-arrow">&#9650;</span></th>
+                    <th data-scol="min_margin">Min Mar&#380;a <span class="sort-arrow">&#9650;</span></th>
+                    <th data-scol="max_margin">Max Mar&#380;a <span class="sort-arrow">&#9650;</span></th>
+                    <th data-scol="avg_price">&#346;r. Cena <span class="sort-arrow">&#9650;</span></th>
+                </tr>
+            </thead>
+            <tbody id="salonBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ============ MAGAZYN ============ -->
+<div class="section" id="sec-magazyn">
+    <div class="section-header"><span>&#9670;</span> Magazyn Pojazd&oacute;w</div>
+    <div class="filters" id="magazynFilters">
+        <div class="filter-group">
+            <div class="filter-label">Model</div>
+            <select class="filter-select" id="fModel"><option value="">Wszystkie</option></select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Dealer</div>
+            <select class="filter-select" id="fDealer"><option value="">Wszyscy</option></select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Rocznik</div>
+            <select class="filter-select" id="fYear"><option value="">Wszystkie</option></select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Paliwo</div>
+            <select class="filter-select" id="fFuel"><option value="">Wszystkie</option></select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Status</div>
+            <select class="filter-select" id="fStatus"><option value="">Wszystkie</option></select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Cena min</div>
+            <input type="number" class="filter-input" id="fPriceMin" placeholder="od" style="width:90px">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Cena max</div>
+            <input type="number" class="filter-input" id="fPriceMax" placeholder="do" style="width:90px">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Mar&#380;a min %</div>
+            <input type="number" class="filter-input" id="fMarginMin" placeholder="od" style="width:80px" step="0.1">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Mar&#380;a max %</div>
+            <input type="number" class="filter-input" id="fMarginMax" placeholder="do" style="width:80px" step="0.1">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">KM od</div>
+            <input type="number" class="filter-input" id="fPowerMin" placeholder="od" style="width:80px">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">KM do</div>
+            <input type="number" class="filter-input" id="fPowerMax" placeholder="do" style="width:80px">
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Typ</div>
+            <select class="filter-select" id="fVehicleType">
+                <option value="">Wszystkie</option>
+                <option value="new">Nowe</option>
+                <option value="demo">Demo</option>
+            </select>
+        </div>
+        <div class="filter-group" style="justify-content:flex-end">
+            <button class="btn" onclick="resetFilters()">Reset</button>
+        </div>
+    </div>
+    <div id="magazynCount" style="font-size:0.75rem;color:var(--text-muted);margin-bottom:10px;"></div>
+    <div class="table-wrap">
+        <table id="magazynTable">
+            <thead>
+                <tr>
+                    <th data-mcol="otomoto_id">ID Otomoto <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="model">Model <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="dealer_short">Salon <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="year">Rocznik <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="fuel">Paliwo <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="power_hp">KM <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="sale_price">Cena <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="catalog_price">Cena Kat. <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="margin_pct">Mar&#380;a % <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="days">Dni <span class="sort-arrow">&#9650;</span></th>
+                    <th data-mcol="status">Status <span class="sort-arrow">&#9650;</span></th>
+                    <th>Akcje</th>
+                </tr>
+            </thead>
+            <tbody id="magazynBody"></tbody>
+        </table>
+    </div>
+    <div class="pagination" id="magazynPagination"></div>
+</div>
+
+<!-- ============ ANALITYKA ============ -->
+<div class="section" id="sec-analityka">
+    <div class="section-header"><span>&#9670;</span> Analityka</div>
+    <div class="chart-grid" id="chartGrid">
+        <div class="chart-card"><div class="chart-title">Rozk&#322;ad Mar&#380;</div><div class="chart-container"><canvas id="chartMarginDist"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Auta per Model</div><div class="chart-container"><canvas id="chartModelCount"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Cena vs Mar&#380;a</div><div class="chart-container"><canvas id="chartPriceMargin"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Paliwo</div><div class="chart-container"><canvas id="chartFuel"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Rocznik</div><div class="chart-container"><canvas id="chartYear"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">KM vs Mar&#380;a</div><div class="chart-container"><canvas id="chartPowerMargin"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Top 10 Dealer&oacute;w (&#346;r. Mar&#380;a)</div><div class="chart-container"><canvas id="chartTopDealers"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Rozk&#322;ad Cen</div><div class="chart-container"><canvas id="chartPriceDist"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ============ INSIGHTS ============ -->
+<div class="section" id="sec-insights">
+    <div class="section-header"><span>&#9670;</span> Insights</div>
+    <div class="insights-grid" id="insightsGrid"></div>
+</div>
+
+<!-- ============ MAPA RYNKOWA ============ -->
+<div class="section" id="sec-mapa">
+    <div class="section-header"><span>&#9670;</span> Mapa Rynkowa</div>
+    <div class="tabs" id="mapaTabs">
+        <div class="tab active" data-mtab="ranking">Ranking Dealer&oacute;w</div>
+        <div class="tab" data-mtab="dominance">Model Dominance</div>
+    </div>
+    <div id="mapaRanking">
+        <div class="table-wrap">
+            <table id="mapaTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th data-dcol="dealer">Dealer <span class="sort-arrow">&#9650;</span></th>
+                        <th data-dcol="count">Aut <span class="sort-arrow">&#9650;</span></th>
+                        <th data-dcol="avg_margin">&#346;r. Mar&#380;a % <span class="sort-arrow">&#9650;</span></th>
+                        <th data-dcol="min_margin">Min <span class="sort-arrow">&#9650;</span></th>
+                        <th data-dcol="max_margin">Max <span class="sort-arrow">&#9650;</span></th>
+                        <th data-dcol="dominant">Dominuj&#261;cy Model</th>
+                    </tr>
+                </thead>
+                <tbody id="mapaBody"></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="mapaDominance" style="display:none;">
+        <div class="chart-card" style="max-width:100%;">
+            <div class="chart-title">Dominacja Modeli per Dealer</div>
+            <div style="position:relative;height:500px;"><canvas id="chartDominance"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- ============ RABATY ============ -->
+
+<div class="section" id="sec-trendy">
+    <div class="section-header"><span>&#9670;</span> Trendy Rynkowe</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+        <div class="kpi-card">
+            <div class="kpi-label">Trend Cen (30 dni)</div>
+            <div id="trendPriceInfo" class="kpi-value" style="font-size:1.1rem">-</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Trend Marży (30 dni)</div>
+            <div id="trendMarginInfo" class="kpi-value" style="font-size:1.1rem">-</div>
+        </div>
+    </div>
+    <div class="chart-grid">
+        <div class="chart-card"><div class="chart-title">Średnia cena per model (trend)</div><canvas id="chartTrendPrice"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Średnia marża % per model (trend)</div><canvas id="chartTrendMargin"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Liczba ofert w czasie</div><canvas id="chartTrendCount"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Rozkład statusów</div><canvas id="chartTrendStatus"></canvas></div>
+    </div>
+    <div style="margin-top:24px">
+        <div class="section-header"><span>&#9670;</span> Pojazdy ze zmianą ceny</div>
+        <div class="table-wrap">
+            <table id="trendChangesTable">
+                <thead><tr>
+                    <th>Model</th><th>Dealer</th><th>Cena poprz.</th><th>Cena aktualna</th><th>Zmiana</th><th>Marża %</th>
+                </tr></thead>
+                <tbody id="trendChangesBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="section" id="sec-rabaty">
+    <div class="section-header"><span>&#9670;</span> Zarz&#261;dzanie Rabatami</div>
+    <div style="background:rgba(0,165,80,0.08);border:1px solid rgba(0,165,80,0.3);padding:16px;border-radius:8px;margin-bottom:20px">
+        <p style="margin:0;font-size:0.9rem;color:var(--text-secondary)">
+            <strong>Rabaty źródłowe:</strong> settings.json (wczytane automatycznie)
+        </p>
+        <p style="margin:4px 0 0 0;font-size:0.85rem;color:var(--text-muted)">
+            💡 Edytuj rabaty w pliku settings.json lub przez endpoint /api/settings. Scraper czyta je automatycznie.
+        </p>
+    </div>
+    <div class="table-wrap" style="margin-bottom:20px;">
+        <table>
+            <thead><tr><th>Nazwa Rabatu</th><th>Model/Rok</th><th>Paliwo</th><th>Wariant</th><th>Kwota PLN</th><th>Typ</th><th>Akcje</th></tr></thead>
+            <tbody id="rabatyBody"></tbody>
+        </table>
+    </div>
+    <button class="btn btn-primary" onclick="showScraperModal()">&#128296; Zastosuj w Scrapperze</button>
+</div>
+
+<!-- ============ EXCEL ============ -->
+<div class="section" id="sec-excel">
+    <div class="excel-section">
+        <div class="section-header" style="justify-content:center"><span>&#9670;</span> Eksport Excel</div>
+        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:10px;">Pobierz profesjonalne raporty w formacie Excel</p>
+        <div class="excel-buttons">
+            <div class="excel-btn" onclick="exportAnalityka()">
+                <div class="excel-btn-icon">&#128202;</div>
+                <div class="excel-btn-title">Analityka</div>
+                <div class="excel-btn-desc">Magazyn, podsumowanie, modele, dealerzy, ranking, elektryki</div>
+            </div>
+            <div class="excel-btn" onclick="exportDealerDashboard()">
+                <div class="excel-btn-icon">&#127970;</div>
+                <div class="excel-btn-title">Dealer Dashboard</div>
+                <div class="excel-btn-desc">Przegl&#261;d dealer&oacute;w + arkusz na ka&#380;dego dealera</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div><!-- /main -->
+
+<script>
+const EMBEDDED_DATA = [];
+
+/* ============================================================
+   CUPRA HUB v9 — Core Application
+   ============================================================ */
+
+let DATA = [];
+let FILTERED = [];
+let EDITED_PRICES = {};
+let DISCOUNTS = [];
+let THEME = 'copper';
+let chartsInitialized = false;
+let chartInstances = {};
+let magazynSort = { col: 'margin_pct', dir: 'desc' };
+let magazynPage = 0;
+const PAGE_SIZE = 50;
+let salonSort = { col: 'avg_margin', dir: 'desc' };
+let salonTab = 'all';
+let mapaSort = { col: 'avg_margin', dir: 'desc' };
+
+/* ---- THEMES ---- */
+const THEMES = {
+    copper:  { accent: '#b18259', light: '#c9a47a', glow: 'rgba(177,130,89,0.15)', border: 'rgba(177,130,89,0.25)', borderHover: 'rgba(177,130,89,0.4)' },
+    ocean:   { accent: '#1e5f74', light: '#3a8fa5', glow: 'rgba(30,95,116,0.15)',  border: 'rgba(30,95,116,0.25)',  borderHover: 'rgba(30,95,116,0.4)' },
+    forest:  { accent: '#2d5a3d', light: '#4a8c62', glow: 'rgba(45,90,61,0.15)',   border: 'rgba(45,90,61,0.25)',   borderHover: 'rgba(45,90,61,0.4)' },
+    sunset:  { accent: '#c75d2e', light: '#e07a4a', glow: 'rgba(199,93,46,0.15)',  border: 'rgba(199,93,46,0.25)',  borderHover: 'rgba(199,93,46,0.4)' }
+};
+
+function applyTheme(name) {
+    const t = THEMES[name]; if (!t) return;
+    THEME = name;
+    const r = document.documentElement.style;
+    r.setProperty('--accent', t.accent);
+    r.setProperty('--accent-light', t.light);
+    r.setProperty('--accent-glow', t.glow);
+    r.setProperty('--accent-border', t.border);
+    r.setProperty('--accent-border-hover', t.borderHover);
+    r.setProperty('--copper', t.accent);
+    r.setProperty('--copper-light', t.light);
+    r.setProperty('--copper-glow', t.glow);
+    r.setProperty('--border-card', t.border);
+    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === name));
+    localStorage.setItem('cupra_theme', name);
+    if (chartsInitialized) rebuildCharts();
+}
+
+document.querySelectorAll('.theme-dot').forEach(d => d.addEventListener('click', () => applyTheme(d.dataset.theme)));
+
+/* ---- NAVIGATION ---- */
+function switchSection(name) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    const sec = document.getElementById('sec-' + name);
+    if (sec) sec.classList.add('active');
+    document.querySelector(`.nav-link[data-section="${name}"]`)?.classList.add('active');
+    if (name === 'analityka' && !chartsInitialized && DATA.length) initCharts();
+    if (name === 'mapa') buildMapaDominanceChart();
+}
+document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', () => switchSection(l.dataset.section)));
+
+/* ---- UTILITY ---- */
+function fmt(n) { return n == null ? '-' : n.toLocaleString('pl-PL'); }
+function fmtPln(n) { return n == null ? '-' : n.toLocaleString('pl-PL', {minimumFractionDigits:0, maximumFractionDigits:0}) + ' PLN'; }
+function fmtPct(n) { return n == null ? '-' : n.toFixed(2) + '%'; }
+function daysBetween(d) {
+    if (!d) return null;
+    return Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
+}
+function marginColor(m) {
+    if (m == null) return '';
+    if (m > 4) return 'color:var(--green);font-weight:700';
+    if (m > 2) return 'color:#4ade80';
+    if (m > 0) return 'color:var(--yellow)';
+    return 'color:var(--red)';
+}
+function marginColorClass(m) {
+    if (m == null) return '';
+    if (m >= 3) return 'badge-green';
+    if (m >= 1) return 'badge-yellow';
+    return 'badge-red';
+}
+function daysBadge(d) {
+    if (d == null) return '';
+    if (d <= 1) return '<span class="badge badge-green">NOWY</span>';
+    if (d <= 5) return '<span class="badge badge-yellow">' + d + ' dni</span>';
+    if (d < 14) return '<span class="badge badge-orange">' + d + ' dni</span>';
+    return '<span class="badge badge-red">STARY ' + d + 'd</span>';
+}
+function statusBadge(s) {
+    switch(s) {
+        case 'OK': return '<span class="badge badge-green">OK</span>';
+        case 'ELEKTRYK_OK': return '<span class="badge badge-blue">EV</span>';
+        case 'ANOMALIA': return '<span class="badge badge-red">ANOMALIA</span>';
+        case 'BRAK_CENY_KAT': return '<span class="badge badge-yellow">BRAK CENY</span>';
+        default: return '<span class="badge">' + (s||'-') + '</span>';
+    }
+}
+function getEdited(id) { return EDITED_PRICES[id] || null; }
+function getVal(v, field) {
+    const ed = getEdited(v.otomoto_id);
+    if (ed && ed[field] !== undefined) return ed[field];
+    return v[field];
+}
+function getMargin(v) {
+    const ed = getEdited(v.otomoto_id);
+    if (ed) {
+        const sp = ed.sale_price != null ? ed.sale_price : v.sale_price;
+        const cp = ed.catalog_price != null ? ed.catalog_price : v.catalog_price;
+        const rebate = v.rebate || 0;
+        const dc = cp * 0.94 - rebate;
+        return { margin_pln: sp - dc, margin_pct: sp > 0 ? ((sp - dc) / sp * 100) : 0, dealer_cost: dc };
+    }
+    return { margin_pln: v.margin_pln, margin_pct: v.margin_pct, dealer_cost: v.dealer_cost };
+}
+
+/* ---- LOAD DATA ---- */
+
+/* ---- SETTINGS SYNC (ONLINE) ---- */
+let SETTINGS = {};
+async function loadSettings() {
+    try {
+        const r = await fetch('/api/settings', { cache: 'no-store' });
+        if (r.ok) SETTINGS = await r.json();
+    } catch(e) { console.log('Settings load error:', e); }
+}
+async function saveSettings() {
+    try {
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(SETTINGS)
+        });
+        console.log('Settings saved');
+    } catch(e) { console.error('Settings save error:', e); }
+}
+
+async function loadData() {
+    try {
+        // Try to load fresh data.json from disk (generated by scraper)
+        let dataToLoad = [];
+        let dataSource = 'embedded (offline)';
+        
+        try {
+            const response = await fetch('/api/data', { cache: 'no-store' });
+            if (response.ok) {
+                dataToLoad = await response.json();
+                dataSource = '📡 live (ze scrapera)';
+                console.log('✅ Załadowano data.json z dysku');
+            }
+        } catch(e) {
+            console.log('ℹ️ data.json niedostępny, używam danych wbudowanych');
+        }
+        
+        DATA = dataToLoad;
+        DATA.forEach(v => {
+            v.days = daysBetween(v.first_seen);
+            if (!v.dealer_short) v.dealer_short = v.dealer ? v.dealer.substring(0, 25) : '-';
+        });
+        EDITED_PRICES = JSON.parse(localStorage.getItem('edited_prices') || '{}');
+        // RABATY: ładuj z SETTINGS.rebates (zamiast localStorage)
+        if (SETTINGS && SETTINGS.rebates && Array.isArray(SETTINGS.rebates)) {
+            DISCOUNTS = SETTINGS.rebates.map(r => ({
+                id: r.id || '',
+                name: r.name || '',
+                model: r.model || '',
+                year: r.year || 0,
+                fuel: r.fuel || '',
+                variant: r.variant || '',
+                amount: r.amount || 0,
+                type: r.type || 'standardowe',
+                active: r.active !== false
+            }));
+        } else {
+            DISCOUNTS = [];
+        }
+        const savedTheme = localStorage.getItem('cupra_theme');
+        if (savedTheme && THEMES[savedTheme]) applyTheme(savedTheme);
+        // Sync time
+        if (DATA.length) {
+            const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
+            const syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
+            document.getElementById('syncTime').textContent = `${syncText} (${dataSource})`;
+        }
+        FILTERED = [...DATA];
+        lastDataHash = hashData(DATA);
+        buildDashboard();
+        buildMagazyn();
+        buildInsights();
+        buildMapa();
+        buildRabaty();
+        buildTrendy();
+    } catch(e) {
+        console.error('Load error:', e);
+        document.querySelector('.main').innerHTML = '<div style="text-align:center;padding:100px 20px;"><h2 style="color:var(--accent)">Nie udało się załadować data.json</h2><p style="color:var(--text-muted);margin-top:12px;">Upewnij się, że plik data.json znajduje się w tym samym folderze.</p><p style="color:var(--red);margin-top:8px;font-size:0.8rem;">' + e.message + '</p></div>';
+    }
+}
+
+/* ---- GLOBAL SEARCH ---- */
+let searchTimeout;
+document.getElementById('globalSearch').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const q = this.value.toLowerCase().trim();
+        if (!q) { FILTERED = [...DATA]; } else {
+            FILTERED = DATA.filter(v =>
+                (v.model||'').toLowerCase().includes(q) ||
+                (v.dealer||'').toLowerCase().includes(q) ||
+                (v.dealer_short||'').toLowerCase().includes(q) ||
+                (v.otomoto_id||'').toString().includes(q) ||
+                (v.title||'').toLowerCase().includes(q)
+            );
+        }
+        buildMagazyn();
+    }, 300);
+});
+
+/* ============================================================
+   DASHBOARD — KPIs, Model Cards, Salon Table
+   ============================================================ */
+function buildDashboard() {
+    buildKPIs();
+    buildModelCards();
+    buildSalonTable();
+}
+
+function buildKPIs() {
+    const total = DATA.length;
+    const withCat = DATA.filter(v => v.has_catalog_price).length;
+    const validMargins = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    const avgMargin = validMargins.length ? (validMargins.reduce((s,v) => s + v.margin_pct, 0) / validMargins.length) : 0;
+    const anomalies = DATA.filter(v => v.status === 'ANOMALIA').length;
+    const evs = DATA.filter(v => v.is_ev).length;
+    const dealers = new Set(DATA.map(v => v.dealer)).size;
+
+    document.getElementById('kpiRow').innerHTML = `
+        <div class="kpi-card green">
+            <div class="kpi-label">Całkowity Stock</div>
+            <div class="kpi-value">${total}</div>
+            <div class="kpi-sub">szt. w magazynie</div>
+        </div>
+        <div class="kpi-card blue">
+            <div class="kpi-label">Z Ceną Katalogową</div>
+            <div class="kpi-value">${withCat}</div>
+            <div class="kpi-sub">${(withCat/total*100).toFixed(0)}% pokrycia</div>
+        </div>
+        <div class="kpi-card copper">
+            <div class="kpi-label">Średnia Marża</div>
+            <div class="kpi-value">${avgMargin.toFixed(2)}%</div>
+            <div class="kpi-sub">na ${validMargins.length} aut</div>
+        </div>
+        <div class="kpi-card red">
+            <div class="kpi-label">Anomalie</div>
+            <div class="kpi-value">${anomalies}</div>
+            <div class="kpi-sub">do weryfikacji</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Elektryki</div>
+            <div class="kpi-value">${evs}</div>
+            <div class="kpi-sub">Born + Tavascan</div>
+        </div>
+        <div class="kpi-card yellow">
+            <div class="kpi-label">Dealerzy</div>
+            <div class="kpi-value">${dealers}</div>
+            <div class="kpi-sub">aktywnych salonów</div>
+        </div>
+    `;
+}
+
+function buildModelCards() {
+    const models = ['Formentor', 'Terramar', 'Leon', 'Born', 'Tavascan'];
+    const icons = { Formentor: '\u{1F3CE}', Terramar: '\u{26F0}', Leon: '\u{1F981}', Born: '\u26A1', Tavascan: '\u{1F680}' };
+    let html = '';
+    models.forEach((m, i) => {
+        const items = DATA.filter(v => m === 'Leon' ? (v.model === 'Leon' || v.model === 'Leon Sportstourer') : v.model === m);
+        const valid = items.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+        const avgM = valid.length ? (valid.reduce((s,v) => s + v.margin_pct, 0) / valid.length) : 0;
+        const prices = items.filter(v => v.sale_price).map(v => v.sale_price);
+        const minP = prices.length ? Math.min(...prices) : 0;
+        const maxP = prices.length ? Math.max(...prices) : 0;
+        const y25 = items.filter(v => v.year === 2025).length;
+        const y26 = items.filter(v => v.year === 2026).length;
+        if (i < 4) {
+            html += `<div class="model-card">
+                <div class="model-icon">${icons[m] || ''}</div>
+                <div class="model-name">${m}${m==='Leon'?' Family':''}</div>
+                <div class="model-stat"><span class="model-stat-label">Ilość</span><span class="model-stat-val">${items.length} szt.</span></div>
+                <div class="model-stat"><span class="model-stat-label">Śr. Marża</span><span class="model-stat-val" style="${marginColor(avgM)}">${avgM.toFixed(2)}%</span></div>
+                <div class="model-stat"><span class="model-stat-label">Cena od</span><span class="model-stat-val">${fmt(minP)} PLN</span></div>
+                <div class="model-stat"><span class="model-stat-label">Cena do</span><span class="model-stat-val">${fmt(maxP)} PLN</span></div>
+                <div class="model-stat"><span class="model-stat-label">2025 / 2026</span><span class="model-stat-val">${y25} / ${y26}</span></div>
+            </div>`;
+        }
+    });
+    // Quick Intel card
+    const evs = DATA.filter(v => v.is_ev);
+    const new24h = DATA.filter(v => v.days != null && v.days <= 1).length;
+    const old14 = DATA.filter(v => v.days != null && v.days >= 14).length;
+    const y2025 = DATA.filter(v => v.year === 2025).length;
+    const y2026 = DATA.filter(v => v.year === 2026).length;
+    html += `<div class="model-card">
+        <div class="model-icon">\u{1F4CA}</div>
+        <div class="model-name">Quick Intel</div>
+        <div class="model-stat"><span class="model-stat-label">Rocznik 2025</span><span class="model-stat-val">${y2025} szt.</span></div>
+        <div class="model-stat"><span class="model-stat-label">Rocznik 2026</span><span class="model-stat-val">${y2026} szt.</span></div>
+        <div class="model-stat"><span class="model-stat-label">Nowe (24h)</span><span class="model-stat-val badge-green" style="color:var(--green)">${new24h}</span></div>
+        <div class="model-stat"><span class="model-stat-label">Stare (14d+)</span><span class="model-stat-val" style="color:var(--red)">${old14}</span></div>
+        <div class="model-stat"><span class="model-stat-label">Elektryki</span><span class="model-stat-val">${evs.length} szt.</span></div>
+    </div>`;
+    document.getElementById('modelRow').innerHTML = html;
+}
+
+/* ---- SALON TABLE (Zestawienie per Model) ---- */
+function buildSalonTable() {
+    let src = DATA.filter(v => v.status !== 'BRAK_CENY_KAT' && v.status !== 'ANOMALIA');
+    if (salonTab !== 'all') {
+        if (salonTab === 'leon') src = src.filter(v => v.model === 'Leon' || v.model === 'Leon Sportstourer');
+        else if (salonTab === 'formentor') src = src.filter(v => v.model === 'Formentor');
+        else if (salonTab === 'terramar') src = src.filter(v => v.model === 'Terramar');
+        else if (salonTab === 'born') src = src.filter(v => v.model === 'Born');
+        else if (salonTab === 'tavascan') src = src.filter(v => v.model === 'Tavascan');
+    }
+    const grouped = {};
+    src.forEach(v => {
+        const d = v.dealer_short || v.dealer || '-';
+        if (!grouped[d]) grouped[d] = [];
+        grouped[d].push(v);
+    });
+    let rows = Object.entries(grouped).map(([dealer, items]) => {
+        const margins = items.filter(v => v.margin_pct != null).map(v => v.margin_pct);
+        const prices = items.filter(v => v.sale_price).map(v => v.sale_price);
+        return {
+            dealer,
+            count: items.length,
+            avg_margin: margins.length ? margins.reduce((a,b) => a+b, 0) / margins.length : 0,
+            min_margin: margins.length ? Math.min(...margins) : 0,
+            max_margin: margins.length ? Math.max(...margins) : 0,
+            avg_price: prices.length ? prices.reduce((a,b) => a+b, 0) / prices.length : 0
+        };
+    });
+    rows.sort((a,b) => {
+        const m = salonSort.dir === 'asc' ? 1 : -1;
+        if (salonSort.col === 'dealer') return a.dealer.localeCompare(b.dealer) * m;
+        return ((a[salonSort.col] || 0) - (b[salonSort.col] || 0)) * m;
+    });
+    document.getElementById('salonBody').innerHTML = rows.map(r => `
+        <tr style="cursor:pointer" onclick="filterByDealer('${r.dealer.replace(/'/g,"\\'")}')">
+            <td style="font-weight:600">${r.dealer}</td>
+            <td>${r.count}</td>
+            <td><span class="badge ${marginColorClass(r.avg_margin)}">${r.avg_margin.toFixed(2)}%</span></td>
+            <td style="${marginColor(r.min_margin)}">${r.min_margin.toFixed(2)}%</td>
+            <td style="${marginColor(r.max_margin)}">${r.max_margin.toFixed(2)}%</td>
+            <td>${fmtPln(Math.round(r.avg_price))}</td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('salonTabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    salonTab = tab.dataset.stab;
+    document.querySelectorAll('#salonTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.stab === salonTab));
+    buildSalonTable();
+});
+document.getElementById('salonTable').querySelector('thead').addEventListener('click', e => {
+    const th = e.target.closest('th');
+    if (!th || !th.dataset.scol) return;
+    if (salonSort.col === th.dataset.scol) salonSort.dir = salonSort.dir === 'asc' ? 'desc' : 'asc';
+    else { salonSort.col = th.dataset.scol; salonSort.dir = 'desc'; }
+    buildSalonTable();
+});
+function filterByDealer(name) {
+    document.getElementById('fDealer').value = name;
+    applyFilters();
+    switchSection('magazyn');
+}
+
+/* ============================================================
+   MAGAZYN — Full Table + Filters + Pagination
+   ============================================================ */
+function buildMagazyn() {
+    populateFilters();
+    applyFilters();
+}
+function populateFilters() {
+    const models = [...new Set(DATA.map(v => v.model))].sort();
+    const dealers = [...new Set(DATA.map(v => v.dealer_short || v.dealer))].sort();
+    const years = [...new Set(DATA.map(v => v.year))].filter(Boolean).sort();
+    const fuels = [...new Set(DATA.map(v => v.fuel))].filter(Boolean).sort();
+    const statuses = [...new Set(DATA.map(v => v.status))].filter(Boolean).sort();
+    const sel = (id, opts) => {
+        const el = document.getElementById(id);
+        const cur = el.value;
+        const first = el.options[0].outerHTML;
+        el.innerHTML = first + opts.map(o => `<option value="${o}" ${o===cur?'selected':''}>${o}</option>`).join('');
+    };
+    sel('fModel', models);
+    sel('fDealer', dealers);
+    sel('fYear', years);
+    sel('fFuel', fuels);
+    sel('fStatus', statuses);
+}
+
+let filterTimeout;
+document.getElementById('magazynFilters').addEventListener('input', () => {
+    clearTimeout(filterTimeout);
+    filterTimeout = setTimeout(applyFilters, 250);
+});
+document.getElementById('magazynFilters').addEventListener('change', applyFilters);
+
+function applyFilters() {
+    const fm = document.getElementById('fModel').value;
+    const fd = document.getElementById('fDealer').value;
+    const fy = document.getElementById('fYear').value;
+    const ff = document.getElementById('fFuel').value;
+    const fs = document.getElementById('fStatus').value;
+    const pmin = parseFloat(document.getElementById('fPriceMin').value) || 0;
+    const pmax = parseFloat(document.getElementById('fPriceMax').value) || Infinity;
+    const mmin = parseFloat(document.getElementById('fMarginMin').value);
+    const mmax = parseFloat(document.getElementById('fMarginMax').value);
+
+    FILTERED = DATA.filter(v => {
+        if (fm && v.model !== fm) return false;
+        if (fd && (v.dealer_short || v.dealer) !== fd) return false;
+        if (fy && v.year != fy) return false;
+        if (ff && v.fuel !== ff) return false;
+        if (fs && v.status !== fs) return false;
+        const sp = getVal(v, 'sale_price') || 0;
+        if (sp < pmin || sp > pmax) return false;
+        const mg = getMargin(v).margin_pct;
+        if (!isNaN(mmin) && mg < mmin) return false;
+        if (!isNaN(mmax) && mg > mmax) return false;
+        
+            // Power filter
+            const pMin = parseInt(document.getElementById('fPowerMin')?.value) || 0;
+            const pMax = parseInt(document.getElementById('fPowerMax')?.value) || 99999;
+            if (v.power_hp && (v.power_hp < pMin || v.power_hp > pMax)) return false;
+            // Vehicle type filter
+            const vType = document.getElementById('fVehicleType')?.value || '';
+            if (vType === 'demo' && !v.is_demo) return false;
+            if (vType === 'new' && v.is_demo) return false;
+            
+            return true;
+    });
+    magazynPage = 0;
+    renderMagazyn();
+}
+
+function resetFilters() {
+
+    ['fModel','fDealer','fYear','fFuel','fStatus','fVehicleType'].forEach(id => document.getElementById(id).value = '');
+    ['fPowerMin','fPowerMax'].forEach(id => document.getElementById(id).value = '');
+    ['fPriceMin','fPriceMax','fMarginMin','fMarginMax'].forEach(id => document.getElementById(id).value = '');
+    FILTERED = [...DATA];
+    magazynPage = 0;
+    renderMagazyn();
+}
+
+function renderMagazyn() {
+    // Sort
+    const sorted = [...FILTERED].sort((a,b) => {
+        const m = magazynSort.dir === 'asc' ? 1 : -1;
+        const col = magazynSort.col;
+        let va, vb;
+        if (col === 'margin_pct') { va = getMargin(a).margin_pct; vb = getMargin(b).margin_pct; }
+        else if (col === 'margin_pln') { va = getMargin(a).margin_pln; vb = getMargin(b).margin_pln; }
+        else if (col === 'sale_price' || col === 'catalog_price') { va = getVal(a, col); vb = getVal(b, col); }
+        else if (col === 'days') { va = a.days; vb = b.days; }
+        else { va = a[col]; vb = b[col]; }
+        if (va == null) va = -Infinity;
+        if (vb == null) vb = -Infinity;
+        if (typeof va === 'string') return va.localeCompare(vb) * m;
+        return (va - vb) * m;
+    });
+
+    const total = sorted.length;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const start = magazynPage * PAGE_SIZE;
+    const page = sorted.slice(start, start + PAGE_SIZE);
+
+    document.getElementById('magazynCount').textContent = `Wyświetlanie ${start+1}-${Math.min(start+PAGE_SIZE, total)} z ${total} pojazdów`;
+
+    const tbody = document.getElementById('magazynBody');
+    tbody.innerHTML = page.map(v => {
+        const mg = getMargin(v);
+        const ed = getEdited(v.otomoto_id);
+        const sp = getVal(v, 'sale_price');
+        const cp = getVal(v, 'catalog_price');
+        const edBadge = ed ? ' <span class="badge badge-edited">(edyt.)</span>' : '';
+        return `<tr style="cursor:pointer" onclick="showVehicle('${v.otomoto_id}')">
+            <td style="font-size:0.7rem;color:var(--text-muted)">${v.otomoto_id || "-"}</td>
+                <td style="font-weight:600">${v.model || '-'}</td>
+            <td>${v.dealer_short || '-'}</td>
+            <td>${v.year || '-'}</td>
+            <td>${v.fuel || '-'}</td>
+            <td>${v.power_hp || '-'}</td>
+            <td>${sp ? fmt(sp) : '-'}${v.price_changed && v.price_30d > 0 ? (v.sale_price > v.price_30d ? ' <span style="color:var(--red)" title="Wzrost z '+fmt(v.price_30d)+'">↑</span>' : v.sale_price < v.price_30d ? ' <span style="color:var(--green)" title="Spadek z '+fmt(v.price_30d)+'">↓</span>' : '') : ''}${edBadge}</td>
+            <td>${cp ? fmt(cp) : '-'}${edBadge}</td>
+            <td style="${marginColor(getDisplayMargin(mg))}">${mg.margin_pct != null ? getDisplayMargin(mg).toFixed(2) + '%' : '-'}</td>
+            <td>${daysBadge(v.days)}</td>
+            <td>${statusBadge(v.status)}</td>
+            <td><button class="btn" style="padding:2px 8px;font-size:0.7rem" onclick="event.stopPropagation();editPrice('${v.otomoto_id}')">&#9998;</button></td>
+        </tr>`;
+    }).join('');
+
+    // Pagination
+    let pagHtml = '';
+    pagHtml += `<button class="page-btn" onclick="goPage(0)" ${magazynPage===0?'disabled':''}>&laquo;</button>`;
+    pagHtml += `<button class="page-btn" onclick="goPage(${magazynPage-1})" ${magazynPage===0?'disabled':''}>&lsaquo;</button>`;
+    const startP = Math.max(0, magazynPage - 3);
+    const endP = Math.min(totalPages, startP + 7);
+    for (let i = startP; i < endP; i++) {
+        pagHtml += `<button class="page-btn ${i===magazynPage?'active':''}" onclick="goPage(${i})">${i+1}</button>`;
+    }
+    pagHtml += `<button class="page-btn" onclick="goPage(${magazynPage+1})" ${magazynPage>=totalPages-1?'disabled':''}>&rsaquo;</button>`;
+    pagHtml += `<button class="page-btn" onclick="goPage(${totalPages-1})" ${magazynPage>=totalPages-1?'disabled':''}>&raquo;</button>`;
+    pagHtml += `<span class="page-info">Strona ${magazynPage+1} z ${totalPages}</span>`;
+    document.getElementById('magazynPagination').innerHTML = pagHtml;
+}
+
+function goPage(p) { magazynPage = Math.max(0, p); renderMagazyn(); }
+
+// Magazyn sort
+document.getElementById('magazynTable').querySelector('thead').addEventListener('click', e => {
+    const th = e.target.closest('th');
+    if (!th || !th.dataset.mcol) return;
+    if (magazynSort.col === th.dataset.mcol) magazynSort.dir = magazynSort.dir === 'asc' ? 'desc' : 'asc';
+    else { magazynSort.col = th.dataset.mcol; magazynSort.dir = 'desc'; }
+    renderMagazyn();
+});
+
+/* ============================================================
+   VEHICLE DETAIL MODAL
+   ============================================================ */
+function showVehicle(id) {
+    const v = DATA.find(x => x.otomoto_id == id);
+    if (!v) return;
+    const mg = getMargin(v);
+    const sp = getVal(v, 'sale_price');
+    const cp = getVal(v, 'catalog_price');
+    const ed = getEdited(v.otomoto_id);
+    const mbWidth = Math.max(0, Math.min(100, (mg.margin_pct || 0) * 10));
+    const mbColor = mg.margin_pct > 4 ? 'var(--green)' : mg.margin_pct > 2 ? '#4ade80' : mg.margin_pct > 0 ? 'var(--yellow)' : 'var(--red)';
+
+    document.getElementById('modalContent').innerHTML = `
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-title">${v.title || v.model || '-'}${v.special_edition ? ' <span class="badge badge-purple">SPECIAL</span>' : ''}</div>
+        ${ed ? '<div style="margin-bottom:12px"><span class="badge badge-edited">Ceny edytowane ręcznie</span></div>' : ''}
+        <div class="modal-section">
+            <div class="modal-section-title">Informacje Podstawowe</div>
+            <div class="modal-grid">
+                <div class="modal-field"><span class="modal-field-label">Model</span><span class="modal-field-value">${v.model || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Rocznik</span><span class="modal-field-value">${v.year || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Paliwo</span><span class="modal-field-value">${v.fuel || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Moc</span><span class="modal-field-value">${v.power_hp ? v.power_hp + ' KM' : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Pojemność</span><span class="modal-field-value">${v.engine_capacity ? v.engine_capacity + ' cm³' : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Skrzynia</span><span class="modal-field-value">${v.gearbox || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Napęd</span><span class="modal-field-value">${v.drive || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Kolor</span><span class="modal-field-value">${v.color || '-'} ${v.color_type ? '('+v.color_type+')' : ''}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Nadwozie</span><span class="modal-field-value">${v.body_type || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Drzwi/Miejsca</span><span class="modal-field-value">${v.doors || '-'} / ${v.seats || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Przebieg</span><span class="modal-field-value">${v.mileage_km ? fmt(v.mileage_km) + ' km' : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">VIN</span><span class="modal-field-value">${v.has_vin ? 'Tak' : 'Nie'}</span></div>
+            </div>
+        </div>
+        <div class="modal-section">
+            <div class="modal-section-title">Ceny i Marża</div>
+            <div class="modal-grid">
+                <div class="modal-field"><span class="modal-field-label">Cena sprzedaży</span><span class="modal-field-value" style="font-size:1.2rem;font-weight:700">${sp ? fmtPln(sp) : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Cena katalogowa</span><span class="modal-field-value">${cp ? fmtPln(cp) : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Koszt dealera</span><span class="modal-field-value">${mg.dealer_cost ? fmtPln(Math.round(mg.dealer_cost)) : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Rabat</span><span class="modal-field-value">${v.rebate ? fmtPln(v.rebate) : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Marża PLN</span><span class="modal-field-value" style="${marginColor(getDisplayMargin(mg))}">${mg.margin_pln != null ? fmtPln(Math.round(mg.margin_pln)) : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Marża %</span><span class="modal-field-value" style="${marginColor(getDisplayMargin(mg))};font-size:1.2rem;font-weight:700">${mg.margin_pct != null ? getDisplayMargin(mg).toFixed(2) + '%' : '-'}</span></div>
+            </div>
+            <div class="margin-bar"><div class="margin-bar-fill" style="width:${mbWidth}%;background:${mbColor}"></div></div>
+        </div>
+        <div class="modal-section">
+            <div class="modal-section-title">Status i Czas</div>
+            <div class="modal-grid">
+                <div class="modal-field"><span class="modal-field-label">Status</span><span class="modal-field-value">${statusBadge(v.status)}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Dni na platformie</span><span class="modal-field-value">${daysBadge(v.days)} ${v.days != null ? '(' + v.days + ' dni)' : ''}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Dealer</span><span class="modal-field-value">${v.dealer || '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Pierwsza obserwacja</span><span class="modal-field-value">${v.first_seen ? new Date(v.first_seen).toLocaleDateString('pl-PL') : '-'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Zmiana ceny</span><span class="modal-field-value">${v.price_changed ? 'Tak' : 'Nie'}</span></div>
+                <div class="modal-field"><span class="modal-field-label">Nowy</span><span class="modal-field-value">${v.is_new ? 'Tak' : 'Nie'}</span></div>
+            </div>
+        </div>
+        ${v.note ? '<div class="modal-section"><div class="modal-section-title">Notatka</div><p style="font-size:0.85rem;color:var(--text-secondary)">' + v.note + '</p></div>' : ''}
+        <div style="margin-top:20px;display:flex;gap:12px">
+            ${v.url ? '<a href="' + v.url + '" target="_blank" class="btn btn-primary" style="text-decoration:none;text-align:center">Otwórz na Otomoto</a>' : ''}
+            <button class="btn" onclick="closeModal();editPrice('${v.otomoto_id}')">&#9998; Edytuj Ceny</button>
+        </div>
+    `;
+    document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+}
+document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+/* ============================================================
+   PRICE EDIT MODAL
+   ============================================================ */
+function editPrice(id) {
+    const v = DATA.find(x => x.otomoto_id == id);
+    if (!v) return;
+    const ed = getEdited(v.otomoto_id) || {};
+    const curSP = ed.sale_price != null ? ed.sale_price : v.sale_price;
+    const curCP = ed.catalog_price != null ? ed.catalog_price : v.catalog_price;
+
+    document.getElementById('modalContent').innerHTML = `
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-title">Edytuj Ceny — ${v.model || ''} (${v.dealer_short || ''})</div>
+        <div class="edit-form">
+            <label>Cena sprzedaży (PLN)</label>
+            <input type="number" id="editSalePrice" value="${curSP || ''}" oninput="calcEditPreview('${v.otomoto_id}')">
+            <label>Cena katalogowa (PLN)</label>
+            <input type="number" id="editCatalogPrice" value="${curCP || ''}" oninput="calcEditPreview('${v.otomoto_id}')">
+            <div class="edit-result" id="editPreview">
+                <div><span style="color:var(--text-muted)">Rabat:</span><span>${v.rebate ? fmtPln(v.rebate) : '0 PLN'}</span></div>
+                <div><span style="color:var(--text-muted)">Koszt dealera:</span><span id="epDC">-</span></div>
+                <div><span style="color:var(--text-muted)">Marża PLN:</span><span id="epMP">-</span></div>
+                <div><span style="color:var(--text-muted)">Marża %:</span><span id="epMPct">-</span></div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:20px">
+                <button class="btn btn-primary" onclick="saveEdit('${v.otomoto_id}')">Zapisz</button>
+                <button class="btn" onclick="clearEdit('${v.otomoto_id}')">Reset</button>
+                <button class="btn" onclick="closeModal()">Anuluj</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('modalOverlay').classList.add('open');
+    calcEditPreview(v.otomoto_id);
+}
+
+function calcEditPreview(id) {
+    const v = DATA.find(x => x.otomoto_id == id);
+    if (!v) return;
+    const sp = parseFloat(document.getElementById('editSalePrice').value) || 0;
+    const cp = parseFloat(document.getElementById('editCatalogPrice').value) || 0;
+    const rebate = v.rebate || 0;
+    const dc = cp * 0.94 - rebate;
+    const mp = sp - dc;
+    const mpct = sp > 0 ? (mp / sp * 100) : 0;
+    document.getElementById('epDC').textContent = fmtPln(Math.round(dc));
+    document.getElementById('epMP').textContent = fmtPln(Math.round(mp));
+    document.getElementById('epMP').style.cssText = marginColor(mpct);
+    document.getElementById('epMPct').textContent = mpct.toFixed(2) + '%';
+    document.getElementById('epMPct').style.cssText = marginColor(mpct);
+}
+
+function saveEdit(id) {
+    const sp = parseFloat(document.getElementById('editSalePrice').value);
+    const cp = parseFloat(document.getElementById('editCatalogPrice').value);
+    if (!sp && !cp) { closeModal(); return; }
+    EDITED_PRICES[id] = {};
+    if (sp) EDITED_PRICES[id].sale_price = sp;
+    if (cp) EDITED_PRICES[id].catalog_price = cp;
+    localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+    closeModal();
+    renderMagazyn();
+}
+
+function clearEdit(id) {
+    delete EDITED_PRICES[id];
+    localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+    closeModal();
+    renderMagazyn();
+}
+
+/* ============================================================
+   INSIGHTS — 5 Trading Cards
+   ============================================================ */
+function buildInsights() {
+    const validVehicles = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    
+    // Card 1: Best Margins (0-6% range)
+    const bestMargins = validVehicles.filter(v => v.margin_pct >= 0 && v.margin_pct <= 6)
+        .sort((a,b) => b.margin_pct - a.margin_pct).slice(0, 5);
+    
+    // Card 2: Aging stock (>5 days)
+    const aging = DATA.filter(v => v.days != null && v.days > 5).sort((a,b) => b.days - a.days);
+    const agingByDealer = {};
+    aging.forEach(v => { const d = v.dealer_short || v.dealer; if (!agingByDealer[d]) agingByDealer[d] = 0; agingByDealer[d]++; });
+    const agingTop = Object.entries(agingByDealer).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    
+    // Card 3: Fresh (<=2 days)
+    const fresh = DATA.filter(v => v.days != null && v.days <= 2).sort((a,b) => a.days - b.days);
+    
+    // Card 4: Dealer comparison
+    const dealerStats = {};
+    validVehicles.forEach(v => {
+        const d = v.dealer_short || v.dealer;
+        if (!dealerStats[d]) dealerStats[d] = { sum: 0, count: 0 };
+        dealerStats[d].sum += v.margin_pct;
+        dealerStats[d].count++;
+    });
+    const dealerArr = Object.entries(dealerStats).map(([d, s]) => ({ dealer: d, avg: s.sum/s.count })).sort((a,b) => b.avg - a.avg);
+    const top3 = dealerArr.slice(0, 3);
+    const bottom3 = dealerArr.slice(-3).reverse();
+    
+    // Card 5: Weekend Picks (3-6% margin)
+    const weekendPicks = validVehicles.filter(v => v.margin_pct >= 3 && v.margin_pct <= 6);
+    const wpModels = {};
+    weekendPicks.forEach(v => { wpModels[v.model] = (wpModels[v.model] || 0) + 1; });
+    
+    document.getElementById('insightsGrid').innerHTML = `
+        <div class="insight-card">
+            <div class="insight-icon">&#127919;</div>
+            <div class="insight-title">Najlepsze Marże</div>
+            <ul class="insight-list">
+                ${bestMargins.map(v => `<li>
+                    <span style="color:var(--text-secondary)">${v.model} — ${v.dealer_short||''}</span>
+                    <span style="${marginColor(getDisplayMargin(v))};font-weight:700">${getDisplayMargin(v).toFixed(2)}%</span>
+                </li>`).join('')}
+            </ul>
+            <button class="insight-btn" onclick="document.getElementById('fMarginMin').value='3';applyFilters();switchSection('magazyn')">Pokaż w Magazynie</button>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">&#9201;</div>
+            <div class="insight-title">Starzejący się Stock</div>
+            <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px">${aging.length} aut powyżej 5 dni</p>
+            <ul class="insight-list">
+                ${agingTop.map(([d, c]) => `<li><span>${d}</span><span class="badge badge-orange">${c} aut</span></li>`).join('')}
+            </ul>
+            <p style="font-size:0.7rem;color:var(--yellow);margin-top:12px">&#9888; Rozważ obniżkę ceny</p>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">&#128640;</div>
+            <div class="insight-title">Świeżaki</div>
+            <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px">${fresh.length} aut w ostatnich 48h</p>
+            <ul class="insight-list">
+                ${fresh.slice(0, 5).map(v => `<li>
+                    <span style="color:var(--text-secondary)">${v.model} — ${v.dealer_short||''}</span>
+                    <span>${v.sale_price ? fmtPln(v.sale_price) : '-'}</span>
+                </li>`).join('')}
+            </ul>
+            <p style="font-size:0.7rem;color:var(--green);margin-top:12px">&#128161; Zaoferuj klientowi</p>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">&#128202;</div>
+            <div class="insight-title">Porównanie Salonów</div>
+            <p style="font-size:0.7rem;color:var(--green);margin-bottom:8px;font-weight:600">&#9650; TOP 3</p>
+            <ul class="insight-list">
+                ${top3.map(d => `<li><span>${d.dealer}</span><span style="color:var(--green);font-weight:600">${d.avg.toFixed(2)}%</span></li>`).join('')}
+            </ul>
+            <p style="font-size:0.7rem;color:var(--red);margin-bottom:8px;margin-top:12px;font-weight:600">&#9660; BOTTOM 3</p>
+            <ul class="insight-list">
+                ${bottom3.map(d => `<li><span>${d.dealer}</span><span style="color:var(--red);font-weight:600">${d.avg.toFixed(2)}%</span></li>`).join('')}
+            </ul>
+        </div>
+        <div class="insight-card">
+            <div class="insight-icon">&#128293;</div>
+            <div class="insight-title">Weekend Picks</div>
+            <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px">${weekendPicks.length} aut z marżą 3-6%</p>
+            <ul class="insight-list">
+                ${Object.entries(wpModels).sort((a,b) => b[1] - a[1]).map(([m, c]) => `<li><span>${m}</span><span class="badge badge-copper">${c} szt.</span></li>`).join('')}
+            </ul>
+            <button class="insight-btn" onclick="document.getElementById('fMarginMin').value='3';document.getElementById('fMarginMax').value='6';applyFilters();switchSection('magazyn')">Pokaż Rekomendacje</button>
+        </div>
+    `;
+}
+
+/* ============================================================
+   MAPA RYNKOWA — Dealer Ranking + Model Dominance
+   ============================================================ */
+function buildMapa() {
+    buildMapaRanking();
+}
+
+function buildMapaRanking() {
+    const valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    const grouped = {};
+    valid.forEach(v => {
+        const d = v.dealer_short || v.dealer || '-';
+        if (!grouped[d]) grouped[d] = { items: [], models: {} };
+        grouped[d].items.push(v);
+        grouped[d].models[v.model] = (grouped[d].models[v.model] || 0) + 1;
+    });
+    let rows = Object.entries(grouped).map(([dealer, data]) => {
+        const margins = data.items.map(v => v.margin_pct);
+        const dominant = Object.entries(data.models).sort((a,b) => b[1] - a[1])[0];
+        return {
+            dealer,
+            count: data.items.length,
+            avg_margin: margins.reduce((a,b) => a+b, 0) / margins.length,
+            min_margin: Math.min(...margins),
+            max_margin: Math.max(...margins),
+            dominant: dominant ? dominant[0] + ' (' + dominant[1] + ')' : '-'
+        };
+    });
+    rows.sort((a,b) => {
+        const m = mapaSort.dir === 'asc' ? 1 : -1;
+        if (mapaSort.col === 'dealer' || mapaSort.col === 'dominant') return (a[mapaSort.col]||'').localeCompare(b[mapaSort.col]||'') * m;
+        return ((a[mapaSort.col]||0) - (b[mapaSort.col]||0)) * m;
+    });
+    document.getElementById('mapaBody').innerHTML = rows.map((r, i) => {
+        const bgClass = r.avg_margin >= 3 ? 'rgba(74,222,128,0.03)' : r.avg_margin >= 1 ? 'rgba(251,191,36,0.03)' : 'rgba(248,113,113,0.03)';
+        return `<tr style="cursor:pointer;background:${bgClass}" onclick="showDealerMini('${r.dealer.replace(/'/g,"\\'")}')">
+            <td style="color:var(--text-muted)">${i+1}</td>
+            <td style="font-weight:600">${r.dealer}</td>
+            <td>${r.count}</td>
+            <td><span class="badge ${marginColorClass(r.avg_margin)}">${r.avg_margin.toFixed(2)}%</span></td>
+            <td style="${marginColor(r.min_margin)}">${r.min_margin.toFixed(2)}%</td>
+            <td style="${marginColor(r.max_margin)}">${r.max_margin.toFixed(2)}%</td>
+            <td>${r.dominant}</td>
+        </tr>`;
+    }).join('');
+}
+
+document.getElementById('mapaTable').querySelector('thead').addEventListener('click', e => {
+    const th = e.target.closest('th');
+    if (!th || !th.dataset.dcol) return;
+    if (mapaSort.col === th.dataset.dcol) mapaSort.dir = mapaSort.dir === 'asc' ? 'desc' : 'asc';
+    else { mapaSort.col = th.dataset.dcol; mapaSort.dir = 'desc'; }
+    buildMapaRanking();
+});
+
+document.getElementById('mapaTabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    const mtab = tab.dataset.mtab;
+    document.querySelectorAll('#mapaTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.mtab === mtab));
+    document.getElementById('mapaRanking').style.display = mtab === 'ranking' ? '' : 'none';
+    document.getElementById('mapaDominance').style.display = mtab === 'dominance' ? '' : 'none';
+    if (mtab === 'dominance') buildMapaDominanceChart();
+});
+
+function showDealerMini(dealerName) {
+    const vehicles = DATA.filter(v => (v.dealer_short || v.dealer) === dealerName);
+    document.getElementById('modalContent').innerHTML = `
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-title">${dealerName} — ${vehicles.length} pojazdów</div>
+        <div class="dealer-mini-modal">
+            <table class="dealer-mini-table">
+                <thead><tr>
+                    <th>Model</th><th>Rok</th><th>Cena</th><th>Marża %</th><th>Dni</th><th>Status</th>
+                </tr></thead>
+                <tbody>${vehicles.map(v => {
+                    const mg = getMargin(v);
+                    return `<tr onclick="closeModal();showVehicle('${v.otomoto_id}')" style="cursor:pointer">
+                        <td>${v.model}</td><td>${v.year||'-'}</td>
+                        <td>${v.sale_price ? fmt(v.sale_price) : '-'}</td>
+                        <td style="${marginColor(getDisplayMargin(mg))}">${mg.margin_pct != null ? getDisplayMargin(mg).toFixed(2)+'%' : '-'}</td>
+                        <td>${daysBadge(v.days)}</td><td>${statusBadge(v.status)}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>
+        </div>
+        <button class="btn" style="margin-top:16px" onclick="filterByDealer('${dealerName.replace(/'/g,"\\'")}');closeModal()">Pokaż w Magazynie</button>
+    `;
+    document.getElementById('modalOverlay').classList.add('open');
+}
+
+function buildMapaDominanceChart() {
+    if (chartInstances.dominance) { chartInstances.dominance.destroy(); }
+    const valid = DATA.filter(v => v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    const dealers = {};
+    const allModels = new Set();
+    valid.forEach(v => {
+        const d = v.dealer_short || v.dealer;
+        if (!dealers[d]) dealers[d] = {};
+        dealers[d][v.model] = (dealers[d][v.model] || 0) + 1;
+        allModels.add(v.model);
+    });
+    const modelList = [...allModels].sort();
+    const dealerList = Object.keys(dealers).sort((a,b) => {
+        const ta = Object.values(dealers[a]).reduce((s,c)=>s+c,0);
+        const tb = Object.values(dealers[b]).reduce((s,c)=>s+c,0);
+        return tb - ta;
+    });
+    const colors = [getAccentColor(), 'rgba(96,165,250,0.8)', 'rgba(74,222,128,0.8)', 'rgba(248,113,113,0.8)', 'rgba(167,139,250,0.8)', 'rgba(251,191,36,0.8)'];
+    const datasets = modelList.map((m, i) => ({
+        label: m,
+        data: dealerList.map(d => dealers[d][m] || 0),
+        backgroundColor: colors[i % colors.length],
+        borderWidth: 0,
+        borderRadius: 2
+    }));
+    const ctx = document.getElementById('chartDominance');
+    if (!ctx) return;
+    chartInstances.dominance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: dealerList, datasets },
+        options: {
+            indexAxis: 'y',
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#999', font: { size: 11 } } } },
+            scales: {
+                x: { stacked: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                y: { stacked: true, grid: { display: false }, ticks: { color: '#999', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+/* ============================================================
+   ANALITYKA — 8 Charts
+   ============================================================ */
+function getAccentColor(alpha) {
+    const t = THEMES[THEME] || THEMES.copper;
+    if (alpha) return t.accent.replace(')', ',' + alpha + ')').replace('rgb', 'rgba');
+    return t.accent;
+}
+function accentRGBA(a) {
+    const t = THEMES[THEME] || THEMES.copper;
+    const hex = t.accent;
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+function initCharts() {
+    chartsInitialized = true;
+    Chart.defaults.color = '#999';
+    Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+    buildAllCharts();
+}
+
+function rebuildCharts() {
+    Object.values(chartInstances).forEach(c => { try { c.destroy(); } catch(e){} });
+    chartInstances = {};
+    if (chartsInitialized) buildAllCharts();
+    buildMapaDominanceChart();
+}
+
+function buildAllCharts() {
+    chartMarginDist();
+    chartModelCount();
+    chartPriceMargin();
+    chartFuel();
+    chartYear();
+    chartPowerMargin();
+    chartTopDealers();
+    chartPriceDist();
+}
+
+function chartMarginDist() {
+    const buckets = ['<0', '0-1', '1-2', '2-3', '3-4', '4-5', '5-6', '>6'];
+    const counts = new Array(8).fill(0);
+    DATA.forEach(v => {
+        const m = v.margin_pct;
+        if (m == null) return;
+        if (m < 0) counts[0]++;
+        else if (m < 1) counts[1]++;
+        else if (m < 2) counts[2]++;
+        else if (m < 3) counts[3]++;
+        else if (m < 4) counts[4]++;
+        else if (m < 5) counts[5]++;
+        else if (m < 6) counts[6]++;
+        else counts[7]++;
+    });
+    if (chartInstances.marginDist) chartInstances.marginDist.destroy();
+    chartInstances.marginDist = new Chart(document.getElementById('chartMarginDist'), {
+        type: 'bar',
+        data: {
+            labels: buckets,
+            datasets: [{
+                label: 'Ilość aut',
+                data: counts,
+                backgroundColor: buckets.map((_,i) => i < 2 ? 'rgba(248,113,113,0.7)' : i < 4 ? 'rgba(251,191,36,0.7)' : accentRGBA(0.7)),
+                borderWidth: 0, borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                x: { grid: { display: false }, ticks: { color: '#999' } }
+            }
+        }
+    });
+}
+
+function chartModelCount() {
+    const models = {};
+    DATA.forEach(v => { models[v.model] = (models[v.model]||0) + 1; });
+    const sorted = Object.entries(models).sort((a,b) => b[1] - a[1]);
+    if (chartInstances.modelCount) chartInstances.modelCount.destroy();
+    chartInstances.modelCount = new Chart(document.getElementById('chartModelCount'), {
+        type: 'bar',
+        data: {
+            labels: sorted.map(s => s[0]),
+            datasets: [{
+                label: 'Liczba aut',
+                data: sorted.map(s => s[1]),
+                backgroundColor: accentRGBA(0.7),
+                borderWidth: 0, borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                y: { grid: { display: false }, ticks: { color: '#999' } }
+            }
+        }
+    });
+}
+
+function chartPriceMargin() {
+    const pts = DATA.filter(v => v.sale_price && v.margin_pct != null).map(v => ({ x: v.sale_price, y: v.margin_pct }));
+    if (chartInstances.priceMargin) chartInstances.priceMargin.destroy();
+    chartInstances.priceMargin = new Chart(document.getElementById('chartPriceMargin'), {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Cena vs Marża',
+                data: pts,
+                backgroundColor: accentRGBA(0.5),
+                borderColor: accentRGBA(0.8),
+                borderWidth: 1, pointRadius: 3, pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { title: { display: true, text: 'Cena (PLN)', color: '#666' }, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666', callback: v => (v/1000)+'k' } },
+                y: { title: { display: true, text: 'Marża %', color: '#666' }, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } }
+            }
+        }
+    });
+}
+
+function chartFuel() {
+    const fuels = {};
+    DATA.forEach(v => { if (v.fuel) fuels[v.fuel] = (fuels[v.fuel]||0) + 1; });
+    const entries = Object.entries(fuels).sort((a,b) => b[1] - a[1]);
+    const fuelColors = ['rgba(251,191,36,0.8)', 'rgba(96,165,250,0.8)', accentRGBA(0.8), 'rgba(74,222,128,0.8)', 'rgba(167,139,250,0.8)'];
+    if (chartInstances.fuel) chartInstances.fuel.destroy();
+    chartInstances.fuel = new Chart(document.getElementById('chartFuel'), {
+        type: 'doughnut',
+        data: {
+            labels: entries.map(e => e[0]),
+            datasets: [{ data: entries.map(e => e[1]), backgroundColor: fuelColors.slice(0, entries.length), borderWidth: 0 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'right', labels: { color: '#999', padding: 12, font: { size: 11 } } } },
+            cutout: '60%'
+        }
+    });
+}
+
+function chartYear() {
+    const years = {};
+    DATA.forEach(v => { if (v.year) years[v.year] = (years[v.year]||0) + 1; });
+    const sorted = Object.entries(years).sort((a,b) => a[0] - b[0]);
+    if (chartInstances.year) chartInstances.year.destroy();
+    chartInstances.year = new Chart(document.getElementById('chartYear'), {
+        type: 'bar',
+        data: {
+            labels: sorted.map(s => s[0]),
+            datasets: [{ label: 'Liczba aut', data: sorted.map(s => s[1]), backgroundColor: accentRGBA(0.7), borderWidth: 0, borderRadius: 6 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                x: { grid: { display: false }, ticks: { color: '#999' } }
+            }
+        }
+    });
+}
+
+function chartPowerMargin() {
+    const pts = DATA.filter(v => v.power_hp && v.margin_pct != null).map(v => ({ x: v.power_hp, y: v.margin_pct }));
+    if (chartInstances.powerMargin) chartInstances.powerMargin.destroy();
+    chartInstances.powerMargin = new Chart(document.getElementById('chartPowerMargin'), {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'KM vs Marża',
+                data: pts,
+                backgroundColor: accentRGBA(0.5),
+                borderColor: accentRGBA(0.8),
+                borderWidth: 1, pointRadius: 3, pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { title: { display: true, text: 'KM', color: '#666' }, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                y: { title: { display: true, text: 'Marża %', color: '#666' }, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } }
+            }
+        }
+    });
+}
+
+function chartTopDealers() {
+    const dealerStats = {};
+    DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT').forEach(v => {
+        const d = v.dealer_short || v.dealer;
+        if (!dealerStats[d]) dealerStats[d] = { sum: 0, count: 0 };
+        dealerStats[d].sum += v.margin_pct;
+        dealerStats[d].count++;
+    });
+    const sorted = Object.entries(dealerStats)
+        .map(([d, s]) => ({ dealer: d, avg: s.sum/s.count }))
+        .sort((a,b) => b.avg - a.avg).slice(0, 10);
+    if (chartInstances.topDealers) chartInstances.topDealers.destroy();
+    chartInstances.topDealers = new Chart(document.getElementById('chartTopDealers'), {
+        type: 'bar',
+        data: {
+            labels: sorted.map(s => s.dealer),
+            datasets: [{
+                label: 'Śr. Marża %',
+                data: sorted.map(s => s.avg),
+                backgroundColor: sorted.map(s => s.avg >= 3 ? 'rgba(74,222,128,0.7)' : s.avg >= 1 ? 'rgba(251,191,36,0.7)' : 'rgba(248,113,113,0.7)'),
+                borderWidth: 0, borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                y: { grid: { display: false }, ticks: { color: '#999', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+function chartPriceDist() {
+    const ranges = ['<100k', '100-120k', '120-140k', '140-160k', '160-180k', '180-200k', '200-250k', '>250k'];
+    const counts = new Array(8).fill(0);
+    DATA.forEach(v => {
+        const p = v.sale_price;
+        if (!p) return;
+        if (p < 100000) counts[0]++;
+        else if (p < 120000) counts[1]++;
+        else if (p < 140000) counts[2]++;
+        else if (p < 160000) counts[3]++;
+        else if (p < 180000) counts[4]++;
+        else if (p < 200000) counts[5]++;
+        else if (p < 250000) counts[6]++;
+        else counts[7]++;
+    });
+    if (chartInstances.priceDist) chartInstances.priceDist.destroy();
+    chartInstances.priceDist = new Chart(document.getElementById('chartPriceDist'), {
+        type: 'bar',
+        data: {
+            labels: ranges,
+            datasets: [{ label: 'Ilość aut', data: counts, backgroundColor: accentRGBA(0.7), borderWidth: 0, borderRadius: 4 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#666' } },
+                x: { grid: { display: false }, ticks: { color: '#999' } }
+            }
+        }
+    });
+}
+
+/* ============================================================
+   RABATY — CRUD + Scraper Config
+   ============================================================ */
+
+/* ============================================================
+   TRENDY — Market trends
+   ============================================================ */
+function buildTrendy() {
+    if (!DATA || !DATA.length) return;
+    
+    // Price trend info
+    const withPrice30d = DATA.filter(v => v.price_30d && v.price_30d > 0);
+    const priceUp = withPrice30d.filter(v => v.sale_price > v.price_30d).length;
+    const priceDown = withPrice30d.filter(v => v.sale_price < v.price_30d).length;
+    const priceSame = withPrice30d.length - priceUp - priceDown;
+    
+    const trendPriceEl = document.getElementById('trendPriceInfo');
+    if (trendPriceEl) {
+        if (priceUp > priceDown) {
+            trendPriceEl.innerHTML = `<span style="color:var(--red)">↑ Wzrostowy</span> (${priceUp} wzrostów, ${priceDown} spadków, ${priceSame} bez zmian)`;
+        } else if (priceDown > priceUp) {
+            trendPriceEl.innerHTML = `<span style="color:var(--green)">↓ Spadkowy</span> (${priceDown} spadków, ${priceUp} wzrostów, ${priceSame} bez zmian)`;
+        } else {
+            trendPriceEl.innerHTML = `<span style="color:var(--yellow)">→ Stabilny</span> (${withPrice30d.length} z historią cen)`;
+        }
+    }
+    
+    // Margin trend
+    const avgMargin = DATA.reduce((s,v) => s + (getMargin(v).margin_pct||0), 0) / DATA.length;
+    const trendMarginEl = document.getElementById('trendMarginInfo');
+    if (trendMarginEl) {
+        trendMarginEl.innerHTML = `Średnia marża: <span style="${marginColor(avgMargin)}">${avgMargin.toFixed(2)}%</span> (${DATA.length} pojazdów)`;
+    }
+    
+    // Trend Price chart — avg price per model
+    const models = [...new Set(DATA.map(v => v.model))].filter(Boolean);
+    const modelAvgPrice = models.map(m => {
+        const cars = DATA.filter(v => v.model === m);
+        return cars.reduce((s,v) => s + (v.sale_price||0), 0) / cars.length;
+    });
+    
+    const ctx1 = document.getElementById('chartTrendPrice');
+    if (ctx1) {
+        if (ctx1._chart) ctx1._chart.destroy();
+        ctx1._chart = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: models,
+                datasets: [{
+                    label: 'Średnia cena',
+                    data: modelAvgPrice,
+                    backgroundColor: accentRGBA(0.6),
+                    borderColor: accentRGBA(1),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { ticks: { color: '#999', callback: v => (v/1000)+'k' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#999' }, grid: { display: false } }
+                }
+            }
+        });
+    }
+    
+    // Trend Margin chart
+    const modelAvgMargin = models.map(m => {
+        const cars = DATA.filter(v => v.model === m);
+        return cars.reduce((s,v) => s + (getMargin(v).margin_pct||0), 0) / cars.length;
+    });
+    
+    const ctx2 = document.getElementById('chartTrendMargin');
+    if (ctx2) {
+        if (ctx2._chart) ctx2._chart.destroy();
+        ctx2._chart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: models,
+                datasets: [{
+                    label: 'Średnia marża %',
+                    data: modelAvgMargin,
+                    backgroundColor: models.map((_,i) => {
+                        const v = modelAvgMargin[i];
+                        return v > 4 ? 'rgba(74,222,128,0.6)' : v > 2 ? 'rgba(251,191,36,0.6)' : 'rgba(248,113,113,0.6)';
+                    }),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { ticks: { color: '#999', callback: v => v+'%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#999' }, grid: { display: false } }
+                }
+            }
+        });
+    }
+    
+    // Count chart
+    const modelCounts = models.map(m => DATA.filter(v => v.model === m).length);
+    const ctx3 = document.getElementById('chartTrendCount');
+    if (ctx3) {
+        if (ctx3._chart) ctx3._chart.destroy();
+        ctx3._chart = new Chart(ctx3, {
+            type: 'doughnut',
+            data: {
+                labels: models,
+                datasets: [{
+                    data: modelCounts,
+                    backgroundColor: ['#b18259','#4ade80','#60a5fa','#fbbf24','#a78bfa','#f87171']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: '#999' } } }
+            }
+        });
+    }
+    
+    // Status chart
+    const statuses = [...new Set(DATA.map(v => v.status))].filter(Boolean);
+    const statusCounts = statuses.map(s => DATA.filter(v => v.status === s).length);
+    const ctx4 = document.getElementById('chartTrendStatus');
+    if (ctx4) {
+        if (ctx4._chart) ctx4._chart.destroy();
+        ctx4._chart = new Chart(ctx4, {
+            type: 'pie',
+            data: {
+                labels: statuses,
+                datasets: [{
+                    data: statusCounts,
+                    backgroundColor: statuses.map(s => s === 'OK' ? '#4ade80' : s === 'ANOMALIA' ? '#f87171' : '#fbbf24')
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: '#999' } } }
+            }
+        });
+    }
+    
+    // Price changes table
+    const changed = DATA.filter(v => v.price_changed && v.price_30d && v.price_30d > 0);
+    const tbody = document.getElementById('trendChangesBody');
+    if (tbody) {
+        tbody.innerHTML = changed.length === 0 
+            ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">Brak zmian cen</td></tr>'
+            : changed.sort((a,b) => Math.abs(b.sale_price - b.price_30d) - Math.abs(a.sale_price - a.price_30d))
+                .slice(0, 50)
+                .map(v => {
+                    const diff = v.sale_price - v.price_30d;
+                    const pct = ((diff / v.price_30d) * 100).toFixed(1);
+                    const color = diff > 0 ? 'var(--red)' : 'var(--green)';
+                    const arrow = diff > 0 ? '↑' : '↓';
+                    const mg = getMargin(v);
+                    return `<tr style="cursor:pointer" onclick="showVehicle('${v.otomoto_id}')">
+                        <td>${v.model||'-'}</td>
+                        <td>${v.dealer_short||'-'}</td>
+                        <td>${fmtPln(v.price_30d)}</td>
+                        <td>${fmtPln(v.sale_price)}</td>
+                        <td style="color:${color};font-weight:600">${arrow} ${fmtPln(Math.abs(diff))} (${pct}%)</td>
+                        <td style="${marginColor(mg.margin_pct)}">${mg.margin_pct != null ? mg.margin_pct.toFixed(2)+'%' : '-'}</td>
+                    </tr>`;
+                }).join('');
+    }
+}
+
+function buildRabaty() {
+    renderRabaty();
+}
+function renderRabaty() {
+    const filtered = DISCOUNTS.filter(r => r.active !== false);
+    document.getElementById('rabatyBody').innerHTML = filtered.map((r, i) => `
+        <tr style="font-size:0.85rem">
+            <td><strong>${r.name || r.model}</strong></td>
+            <td>${r.model} ${r.year}</td>
+            <td>${r.fuel || '-'}</td>
+            <td>${r.variant || '-'}</td>
+            <td style="font-weight:600;color:var(--green)">${fmtPln(r.amount || 0)}</td>
+            <td><span style="background:rgba(0,165,80,0.2);padding:2px 6px;border-radius:3px;font-size:0.75rem">${r.type === 'promocyjne' ? '🎯 Promo' : '📦 Std'}</span></td>
+            <td>
+                <button class="btn" style="padding:2px 6px;font-size:0.65rem;opacity:0.5" title="Edycja w settings.json">✎</button>
+                <button class="btn" style="padding:2px 6px;font-size:0.65rem;color:var(--red);opacity:0.5" title="Aktualnie tylko zapis do settings.json" disabled>✕</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;font-size:0.9rem">Ładowanie rabatów z settings.json...</td></tr>';
+}
+
+function addRabat() {
+    const model = document.getElementById('rabatModel').value;
+    const year = document.getElementById('rabatYear').value;
+    const amount = parseFloat(document.getElementById('rabatAmount').value);
+    if (!amount || amount <= 0) return;
+    const existing = DISCOUNTS.findIndex(r => r.model === model && r.year == year);
+    if (existing >= 0) {
+        DISCOUNTS[existing].amount = amount;
+    } else {
+        DISCOUNTS.push({ model, year, amount });
+    }
+    localStorage.setItem('cupra_discounts', JSON.stringify(DISCOUNTS));
+    document.getElementById('rabatAmount').value = '';
+    renderRabaty();
+}
+
+function editRabat(i) {
+    const r = DISCOUNTS[i];
+    if (!r) return;
+    const newAmt = prompt('Nowa kwota rabatu dla ' + r.model + ' ' + r.year + ':', r.amount);
+    if (newAmt && !isNaN(parseFloat(newAmt))) {
+        DISCOUNTS[i].amount = parseFloat(newAmt);
+        localStorage.setItem('cupra_discounts', JSON.stringify(DISCOUNTS));
+        renderRabaty();
+    }
+}
+
+function deleteRabat(i) {
+    DISCOUNTS.splice(i, 1);
+    localStorage.setItem('cupra_discounts', JSON.stringify(DISCOUNTS));
+    renderRabaty();
+}
+
+function showScraperModal() {
+    const config = DISCOUNTS.map(r => ({
+        model: r.model,
+        year: parseInt(r.year),
+        rebate_pln: r.amount
+    }));
+    localStorage.setItem('scraper_rebates', JSON.stringify(config));
+    document.getElementById('modalContent').innerHTML = `
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-title">Konfiguracja Scrappera</div>
+        <p style="color:var(--text-secondary);margin-bottom:16px">Ten rabat zostanie użyty przy następnym skanowaniu.</p>
+        <div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:16px;overflow-x:auto">
+            <pre style="color:var(--green);font-size:0.8rem;font-family:monospace">${JSON.stringify(config, null, 2)}</pre>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.75rem;margin-top:12px">Zapisano w localStorage('scraper_rebates')</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="closeModal()">OK</button>
+    `;
+    document.getElementById('modalOverlay').classList.add('open');
+}
+
+/* ============================================================
+   EXCEL EXPORT — SheetJS
+   ============================================================ */
+function exportAnalityka() {
+    if (typeof XLSX === 'undefined') { alert('Biblioteka XLSX nie załadowana. Sprawdź połączenie.'); return; }
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Magazyn (All vehicles)
+    const magData = DATA.map(v => {
+        const mg = getMargin(v);
+        return {
+            'ID': v.otomoto_id,
+            'Model': v.model,
+            'Salon': v.dealer_short || v.dealer,
+            'Rocznik': v.year,
+            'Paliwo': v.fuel,
+            'KM': v.power_hp,
+            'Pojemność': v.engine_capacity,
+            'Skrzynia': v.gearbox,
+            'Napęd': v.drive,
+            'Kolor': v.color,
+            'Cena sprzedaży': getVal(v, 'sale_price'),
+            'Cena katalogowa': getVal(v, 'catalog_price'),
+            'Koszt dealera': mg.dealer_cost ? Math.round(mg.dealer_cost) : null,
+            'Rabat': v.rebate,
+            'Marża PLN': mg.margin_pln ? Math.round(mg.margin_pln) : null,
+            'Marża %': mg.margin_pct ? parseFloat(mg.margin_pct.toFixed(2)) : null,
+            'Dni na platformie': v.days,
+            'Status': v.status,
+            'URL': v.url
+        };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(magData), 'Magazyn');
+
+    // Sheet 2: Summary
+    const valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    const avgMargin = valid.length ? valid.reduce((s,v) => s + v.margin_pct, 0) / valid.length : 0;
+    const sumData = [
+        { 'Metryka': 'Całkowity stock', 'Wartość': DATA.length },
+        { 'Metryka': 'Z ceną katalogową', 'Wartość': DATA.filter(v => v.has_catalog_price).length },
+        { 'Metryka': 'Średnia marża %', 'Wartość': parseFloat(avgMargin.toFixed(2)) },
+        { 'Metryka': 'Anomalie', 'Wartość': DATA.filter(v => v.status === 'ANOMALIA').length },
+        { 'Metryka': 'Elektryki', 'Wartość': DATA.filter(v => v.is_ev).length },
+        { 'Metryka': 'Dealerzy', 'Wartość': new Set(DATA.map(v => v.dealer)).size },
+        { 'Metryka': 'Rocznik 2025', 'Wartość': DATA.filter(v => v.year === 2025).length },
+        { 'Metryka': 'Rocznik 2026', 'Wartość': DATA.filter(v => v.year === 2026).length }
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sumData), 'Podsumowanie');
+
+    // Sheet 3: Per-model
+    const modelNames = [...new Set(DATA.map(v => v.model))].sort();
+    const modelData = modelNames.map(m => {
+        const items = DATA.filter(v => v.model === m);
+        const vm = items.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA');
+        const avgM = vm.length ? vm.reduce((s,v) => s + v.margin_pct, 0) / vm.length : 0;
+        const prices = items.filter(v => v.sale_price).map(v => v.sale_price);
+        return {
+            'Model': m,
+            'Ilość': items.length,
+            'Śr. Marża %': parseFloat(avgM.toFixed(2)),
+            'Min Cena': prices.length ? Math.min(...prices) : null,
+            'Max Cena': prices.length ? Math.max(...prices) : null,
+            'Śr. Cena': prices.length ? Math.round(prices.reduce((a,b) => a+b, 0) / prices.length) : null
+        };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(modelData), 'Modele');
+
+    // Sheet 4: Per-dealer
+    const dealerNames = [...new Set(DATA.map(v => v.dealer_short || v.dealer))].sort();
+    const dealerData = dealerNames.map(d => {
+        const items = DATA.filter(v => (v.dealer_short || v.dealer) === d);
+        const vm = items.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA');
+        const avgM = vm.length ? vm.reduce((s,v) => s + v.margin_pct, 0) / vm.length : 0;
+        return {
+            'Dealer': d,
+            'Ilość aut': items.length,
+            'Śr. Marża %': parseFloat(avgM.toFixed(2)),
+            'Min Marża %': vm.length ? parseFloat(Math.min(...vm.map(v => v.margin_pct)).toFixed(2)) : null,
+            'Max Marża %': vm.length ? parseFloat(Math.max(...vm.map(v => v.margin_pct)).toFixed(2)) : null
+        };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dealerData), 'Dealerzy');
+
+    // Sheet 5: Top by margin
+    const top = [...valid].sort((a,b) => b.margin_pct - a.margin_pct).slice(0, 50).map(v => ({
+        'Model': v.model,
+        'Dealer': v.dealer_short || v.dealer,
+        'Cena': v.sale_price,
+        'Marża %': parseFloat(v.margin_pct.toFixed(2)),
+        'Marża PLN': v.margin_pln ? Math.round(v.margin_pln) : null,
+        'Status': v.status
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(top), 'Ranking');
+
+    // Sheet 6: EVs
+    const evData = DATA.filter(v => v.is_ev).map(v => ({
+        'Model': v.model,
+        'Dealer': v.dealer_short || v.dealer,
+        'Rocznik': v.year,
+        'Cena': v.sale_price,
+        'Marża %': v.margin_pct ? parseFloat(v.margin_pct.toFixed(2)) : null,
+        'Status': v.status
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(evData), 'Elektryki');
+
+    XLSX.writeFile(wb, 'ANALITYKA.xlsx');
+}
+
+function exportDealerDashboard() {
+    if (typeof XLSX === 'undefined') { alert('Biblioteka XLSX nie załadowana.'); return; }
+    const wb = XLSX.utils.book_new();
+
+    // Overview sheet
+    const dealerNames = [...new Set(DATA.map(v => v.dealer_short || v.dealer))].sort();
+    const overviewData = dealerNames.map(d => {
+        const items = DATA.filter(v => (v.dealer_short || v.dealer) === d);
+        const vm = items.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+        const avgM = vm.length ? vm.reduce((s,v) => s + v.margin_pct, 0) / vm.length : 0;
+        const models = {};
+        items.forEach(v => { models[v.model] = (models[v.model]||0)+1; });
+        const dominant = Object.entries(models).sort((a,b)=>b[1]-a[1])[0];
+        return {
+            'Dealer': d,
+            'Ilość aut': items.length,
+            'Śr. Marża %': parseFloat(avgM.toFixed(2)),
+            'Dominujący model': dominant ? dominant[0] : '-',
+            'Nowe (24h)': items.filter(v => v.days != null && v.days <= 1).length,
+            'Stare (14d+)': items.filter(v => v.days != null && v.days >= 14).length
+        };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overviewData), 'Przegląd');
+
+    // Per-dealer sheets
+    dealerNames.forEach(d => {
+        const items = DATA.filter(v => (v.dealer_short || v.dealer) === d);
+        const sheetName = d.substring(0, 31).replace(/[\\/\?\*\[\]]/g, '');
+        const rows = items.map(v => {
+            const mg = getMargin(v);
+            return {
+                'Model': v.model, 'Rocznik': v.year, 'Paliwo': v.fuel, 'KM': v.power_hp,
+                'Cena': getVal(v, 'sale_price'), 'Cena Kat.': getVal(v, 'catalog_price'),
+                'Marża %': mg.margin_pct ? parseFloat(mg.margin_pct.toFixed(2)) : null,
+                'Marża PLN': mg.margin_pln ? Math.round(mg.margin_pln) : null,
+                'Dni': v.days, 'Status': v.status
+            };
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+    });
+
+    XLSX.writeFile(wb, 'DEALER_DASHBOARD.xlsx');
+}
+
+/* ============================================================
+   AUTO-RELOAD MONITOR — Detects data.json changes every 5 sec
+   ============================================================ */
+let lastDataHash = null;
+let autoReloadEnabled = true;
+
+function hashData(data) {
+    // Deep hash: count + all IDs + all prices + all margins
+    if (!data || !data.length) return 'empty';
+    let h = '' + data.length;
+    for (const c of data) {
+        h += '_' + (c.otomoto_id||'') + ':' + (c.sale_price||0) + ':' + (c.margin_pct||0);
+    }
+    return h;
+}
+
+async function checkForDataUpdates() {
+    if (!autoReloadEnabled) return;
+    try {
+        const response = await fetch('/api/data', { cache: 'no-store' });
+        if (!response.ok) return;
+        
+        const freshData = await response.json();
+        const currentHash = hashData(freshData);
+        
+        if (lastDataHash === null) {
+            lastDataHash = currentHash;
+            return;
+        }
+        
+        if (lastDataHash !== currentHash) {
+            console.log('✅ Wykryto nowe dane! Soft refresh...');
+            showToast('🔄 Nowe dane ze scrapera! Odświeżam...', 2000);
+            // Soft refresh — bez pełnego reload strony
+            DATA = freshData;
+            DATA.forEach(v => {
+                v.days = daysBetween(v.first_seen);
+                if (!v.dealer_short) v.dealer_short = v.dealer ? v.dealer.substring(0, 25) : '-';
+            });
+            // Update sync time
+            if (DATA.length) {
+                const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
+                const syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
+                document.getElementById('syncTime').textContent = `${syncText} (📡 live)`;
+            }
+            FILTERED = [...DATA];
+            lastDataHash = currentHash;
+            buildDashboard();
+            buildMagazyn();
+            buildTrendy();
+            buildAnalityka();
+            renderRabaty();
+            applyFilters();
+        }
+    } catch(e) {
+        // data.json nie dostępny — to OK
+    }
+}
+
+// Start monitoring every 5 seconds
+setInterval(checkForDataUpdates, 5000);
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSettings();  // Najpierw rabaty z settings.json
+    await loadData();      // Potem dane samochodów
+});
+
+/* ============================================================
+   ADDITIONAL FEATURES — Reset Edits, Keyboard Navigation,
+   Stats Footer, Auto-refresh indicator
+   ============================================================ */
+
+/* Reset all manual price edits */
+function resetAllEdits() {
+    if (!confirm('Czy na pewno chcesz zresetować wszystkie ręczne edycje cen?')) return;
+    EDITED_PRICES = {};
+    localStorage.removeItem('edited_prices');
+    renderMagazyn();
+    closeModal();
+}
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown', function(e) {
+    // ESC closes modal
+    if (e.key === 'Escape') closeModal();
+    
+    // Ctrl+1-7 for section switching
+    if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
+        e.preventDefault();
+        const sections = ['dashboard', 'magazyn', 'analityka', 'insights', 'mapa', 'rabaty', 'excel'];
+        const idx = parseInt(e.key) - 1;
+        if (sections[idx]) switchSection(sections[idx]);
+    }
+    
+    // Ctrl+F focuses search
+    if (e.ctrlKey && e.key === 'f') {
+        // Don't prevent default - let browser search work too
+    }
+});
+
+/* Check for scroll on tables and add indicator */
+function checkTableScroll() {
+    document.querySelectorAll('.table-wrap').forEach(wrap => {
+        const scrollable = wrap.scrollWidth > wrap.clientWidth;
+        wrap.classList.toggle('scrollable', scrollable);
+    });
+}
+window.addEventListener('resize', checkTableScroll);
+setTimeout(checkTableScroll, 1000);
+
+/* Summary stats for Magazyn footer */
+function getMagazynStats() {
+    const valid = FILTERED.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA');
+    if (!valid.length) return '';
+    const avgMargin = valid.reduce((s,v) => s + v.margin_pct, 0) / valid.length;
+    const avgPrice = valid.filter(v => v.sale_price).reduce((s,v) => s + v.sale_price, 0) / valid.filter(v => v.sale_price).length;
+    const totalVal = FILTERED.filter(v => v.sale_price).reduce((s,v) => s + v.sale_price, 0);
+    return `<div style="display:flex;gap:24px;justify-content:center;margin-top:12px;padding:12px;background:var(--bg-card);border:1px solid var(--accent-border);border-radius:8px">
+        <span style="font-size:0.75rem;color:var(--text-muted)">Śr. marża: <strong style="color:var(--accent)">${avgMargin.toFixed(2)}%</strong></span>
+        <span style="font-size:0.75rem;color:var(--text-muted)">Śr. cena: <strong style="color:var(--text-primary)">${fmtPln(Math.round(avgPrice))}</strong></span>
+        <span style="font-size:0.75rem;color:var(--text-muted)">Wartość: <strong style="color:var(--text-primary)">${fmtPln(Math.round(totalVal))}</strong></span>
+        <span style="font-size:0.75rem;color:var(--text-muted)">Filtrowane: <strong>${FILTERED.length}</strong> z <strong>${DATA.length}</strong></span>
+        ${Object.keys(EDITED_PRICES).length ? '<button class="btn" style="padding:2px 10px;font-size:0.65rem;color:var(--yellow)" onclick="resetAllEdits()">Reset edycji (' + Object.keys(EDITED_PRICES).length + ')</button>' : ''}
+    </div>`;
+}
+
+/* Override renderMagazyn to include stats footer */
+const _origRenderMagazyn = renderMagazyn;
+// We already have renderMagazyn defined, so we patch the pagination section
+// The stats are shown via magazynCount element which we'll enhance
+
+/* Enhanced magazyn count with stats */
+const _origApplyFilters = applyFilters;
+
+/* ---- DASHBOARD QUICK STATS ROW ---- */
+function buildQuickStats() {
+    // Additional stats row below model cards on dashboard
+    const valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    const totalValue = DATA.filter(v => v.sale_price).reduce((s,v) => s + v.sale_price, 0);
+    const avgPrice = DATA.filter(v => v.sale_price).length 
+        ? totalValue / DATA.filter(v => v.sale_price).length : 0;
+    const priceChanged = DATA.filter(v => v.price_changed).length;
+    const withVin = DATA.filter(v => v.has_vin).length;
+    
+    // Create stats row if not exists
+    let statsEl = document.getElementById('quickStats');
+    if (!statsEl) {
+        statsEl = document.createElement('div');
+        statsEl.id = 'quickStats';
+        statsEl.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px';
+        const modelRow = document.getElementById('modelRow');
+        if (modelRow && modelRow.nextSibling) {
+            modelRow.parentNode.insertBefore(statsEl, modelRow.nextSibling.nextSibling);
+        }
+    }
+    statsEl.innerHTML = `
+        <div class="card" style="padding:16px;text-align:center">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em">Wartość Magazynu</div>
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-light);margin-top:4px">${(totalValue/1000000).toFixed(1)} mln PLN</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em">Średnia Cena</div>
+            <div style="font-size:1.4rem;font-weight:700;margin-top:4px">${fmtPln(Math.round(avgPrice))}</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em">Zmiana Ceny</div>
+            <div style="font-size:1.4rem;font-weight:700;color:var(--yellow);margin-top:4px">${priceChanged}</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+            <div style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em">Z numerem VIN</div>
+            <div style="font-size:1.4rem;font-weight:700;margin-top:4px">${withVin} <span style="font-size:0.7rem;color:var(--text-muted)">(${(withVin/DATA.length*100).toFixed(0)}%)</span></div>
+        </div>
+    `;
+}
+
+/* Patch buildDashboard to include quickStats */
+const _origBuildDashboard = buildDashboard;
+buildDashboard = function() {
+    _origBuildDashboard();
+    buildQuickStats();
+};
+
+/* ---- ENHANCED MAGAZYN COUNT ---- */
+const origRenderMag = renderMagazyn;
+renderMagazyn = function() {
+    origRenderMag();
+    // Append summary stats below pagination
+    const pag = document.getElementById('magazynPagination');
+    if (pag && FILTERED.length > 0) {
+        const valid = FILTERED.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA');
+        if (valid.length) {
+            const avgMargin = valid.reduce((s,v) => s + v.margin_pct, 0) / valid.length;
+            const totalVal = FILTERED.filter(v => v.sale_price).reduce((s,v) => s + v.sale_price, 0);
+            pag.insertAdjacentHTML('afterend', 
+                '<div id="magStats" style="display:flex;gap:20px;justify-content:center;margin-top:12px;padding:10px;background:var(--bg-card);border:1px solid var(--accent-border);border-radius:8px;flex-wrap:wrap">' +
+                '<span style="font-size:0.73rem;color:var(--text-muted)">Śr. marża: <strong style="color:var(--accent)">' + avgMargin.toFixed(2) + '%</strong></span>' +
+                '<span style="font-size:0.73rem;color:var(--text-muted)">Wartość: <strong style="color:var(--text-primary)">' + (totalVal/1000000).toFixed(2) + ' mln PLN</strong></span>' +
+                '<span style="font-size:0.73rem;color:var(--text-muted)">Filtr: <strong>' + FILTERED.length + '</strong> z <strong>' + DATA.length + '</strong></span>' +
+                (Object.keys(EDITED_PRICES).length ? '<button class="btn" style="padding:2px 10px;font-size:0.6rem;color:var(--yellow)" onclick="resetAllEdits()">Reset edycji (' + Object.keys(EDITED_PRICES).length + ')</button>' : '') +
+                '</div>'
+            );
+        }
+        // Remove old stats div if duplicated
+        const oldStats = document.querySelectorAll('#magStats');
+        if (oldStats.length > 1) oldStats[0].remove();
+    }
+};
+
+/* ---- COPY VEHICLE ID ---- */
+function copyVehicleId(id) {
+    navigator.clipboard.writeText(id).then(() => {
+        // Brief flash feedback
+    }).catch(() => {});
+}
+
+/* ---- LOCAL STORAGE SUMMARY ---- */
+function getStorageSummary() {
+    const items = {
+        'Edycje cen': Object.keys(EDITED_PRICES).length,
+        'Rabaty': DISCOUNTS.length,
+        'Motyw': THEME
+    };
+    return items;
+}
+
+/* ---- EXPORT CURRENT VIEW (Filtered Magazyn) ---- */
+function exportCurrentView() {
+    if (typeof XLSX === 'undefined') { alert('XLSX nie załadowane'); return; }
+    const wb = XLSX.utils.book_new();
+    const data = FILTERED.map(v => {
+        const mg = getMargin(v);
+        return {
+            'Model': v.model,
+            'Salon': v.dealer_short || v.dealer,
+            'Rocznik': v.year,
+            'Paliwo': v.fuel,
+            'KM': v.power_hp,
+            'Cena': getVal(v, 'sale_price'),
+            'Cena Kat.': getVal(v, 'catalog_price'),
+            'Marża %': mg.margin_pct ? parseFloat(mg.margin_pct.toFixed(2)) : null,
+            'Marża PLN': mg.margin_pln ? Math.round(mg.margin_pln) : null,
+            'Dni': v.days,
+            'Status': v.status
+        };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Filtrowany Magazyn');
+    XLSX.writeFile(wb, 'MAGAZYN_FILTR_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
+/* ---- DATA INTEGRITY CHECK ---- */
+function checkDataIntegrity() {
+    const issues = [];
+    DATA.forEach(v => {
+        if (!v.model) issues.push({ id: v.otomoto_id, issue: 'Brak modelu' });
+        if (!v.sale_price && v.status !== 'BRAK_CENY_KAT') issues.push({ id: v.otomoto_id, issue: 'Brak ceny' });
+        if (v.margin_pct != null && (v.margin_pct < -20 || v.margin_pct > 30)) issues.push({ id: v.otomoto_id, issue: 'Marża poza zakresem' });
+    });
+    return issues;
+}
+
+/* ---- FORMAT HELPERS ---- */
+function formatDateTime(dt) {
+    if (!dt) return '-';
+    try {
+        return new Date(dt).toLocaleString('pl-PL', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    } catch(e) { return dt; }
+}
+
+function formatDate(dt) {
+    if (!dt) return '-';
+    try {
+        return new Date(dt).toLocaleDateString('pl-PL', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    } catch(e) { return dt; }
+}
+
+/* ---- SMOOTH SCROLL TO TOP ON SECTION CHANGE ---- */
+const _origSwitch = switchSection;
+switchSection = function(name) {
+    _origSwitch(name);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+/* ---- PERFORMANCE: Debounce utility ---- */
+function debounce(fn, ms) {
+    let timer;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), ms);
+    };
+}
+
+/* ---- INITIAL LOADING STATE ---- */
+(function() {
+    // Show loading spinner until data loads
+    const main = document.querySelector('.main');
+    if (main && !DATA.length) {
+        const loadingHtml = '<div class="loading" id="loadingIndicator"><div class="loading-spinner"></div><div class="loading-text">Ładowanie danych...</div></div>';
+        // Will be replaced by buildDashboard
+    }
+})();
+
+
+// ---- MARGIN DISPLAY (scraper handles 3-step logic) ----
+function getDisplayMargin(car) {
+  // Scraper already applies correct 3-step rebate logic
+  // margin_pct is the final calculated margin
+  return car.margin_pct != null ? car.margin_pct : 0;
+}
+
+function filterCarsByMode(cars) {
+  return cars; // filtering done via filters, no mode needed
+}
+
+/* ---- VERSION INFO (for debugging) ---- */
+console.log('%c CUPRA HUB v9.0 ', 'background:#b18259;color:#fff;font-weight:bold;font-size:14px;border-radius:4px;padding:4px 8px');
+console.log('%c Załadowano pomyślnie ', 'color:#4ade80;font-size:11px');
+
+/* ---- REBATES JSON (osadzony) ---- */
+const REBATES_JSON = {
+    "Formentor": {
+        "2025": {
+            "Benzyna": 15000,
+            "PHEV": 30000,
+            "Diesel": 15000
+        },
+        "2026": {
+            "Benzyna": 10000,
+            "PHEV": 20000,
+            "Diesel": 10000
+        }
+    },
+    "Terramar": {
+        "2025": {
+            "Benzyna": 15000,
+            "Diesel": 15000,
+            "PHEV": 20000
+        },
+        "2026": {
+            "Benzyna": 10000,
+            "Diesel": 10000,
+            "PHEV": 15000
+        }
+    },
+    "Leon": {
+        "2025": {
+            "Benzyna": 23000,
+            "Diesel": 20000,
+            "PHEV": 28000
+        },
+        "2026": {
+            "Benzyna": 25000,
+            "Diesel": 22000,
+            "PHEV": 30000
+        }
+    },
+    "Born": {
+        "2025": {
+            "Elektryk": 35000
+        },
+        "2026": {
+            "Elektryk": 45000
+        }
+    },
+    "Tavascan": {
+        "2025": {
+            "Elektryk": 50000
+        },
+        "2026": {
+            "Elektryk": 50000
+        }
+    }
+};
+
+</script>
+</body>
+</html>
