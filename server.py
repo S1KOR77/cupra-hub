@@ -47,6 +47,8 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 'settings_exists': os.path.exists(os.path.join(BASE_DIR, 'settings.json')),
                 'server_version': '2.0-railway'
             })
+        elif parsed.path == '/run-scraper':
+            self._run_scraper_endpoint()
         elif parsed.path == '/' or parsed.path == '':
             self.path = '/index.html'
             super().do_GET()
@@ -65,6 +67,21 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self._add_cors_headers()
         self.end_headers()
+
+    def _run_scraper_endpoint(self):
+        """Endpoint do ręcznego uruchomienia scraper'a."""
+        def scraper_thread():
+            run_scraper()
+        
+        thread = threading.Thread(target=scraper_thread, daemon=True)
+        thread.start()
+        
+        self._send_json({
+            'status': 'scraper_started',
+            'message': 'Scraper uruchomiony w tle - czekaj ~15 minut',
+            'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'check_logs': 'Obserwuj Deploy Logs w Railway panelu'
+        })
 
     def _serve_json_file(self, filename):
         filepath = os.path.join(BASE_DIR, filename)
