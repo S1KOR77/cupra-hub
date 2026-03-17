@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-CUPRA HUB — HTTP Server + Auto Scraper
+CUPRA HUB — HTTP Server + Auto Scraper v2.1
 Serwuje pliki statyczne + API do odczytu/zapisu ustawień.
 Automatycznie uruchamia scraper co dzień o 06:00 UTC.
+Endpoint /run-scraper do ręcznego uruchomienia.
 """
 import http.server
 import json
@@ -26,6 +27,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Track scraper state
+scraper_state = {
+    'running': False,
+    'last_run': None,
+    'last_status': None,
+    'last_duration': None,
+}
+scraper_lock = threading.Lock()
+
+
 class CupraHandler(http.server.SimpleHTTPRequestHandler):
     """Handler z API endpointami."""
 
@@ -45,10 +56,11 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'data_exists': os.path.exists(os.path.join(BASE_DIR, 'data.json')),
                 'settings_exists': os.path.exists(os.path.join(BASE_DIR, 'settings.json')),
-                'server_version': '2.0-railway'
+                'server_version': '2.1-railway',
+                'scraper': scraper_state,
             })
         elif parsed.path == '/run-scraper':
-            self._run_scraper_endpoint()
+            self._trigger_scraper()
         elif parsed.path == '/' or parsed.path == '':
             self.path = '/index.html'
             super().do_GET()
@@ -60,6 +72,8 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == '/api/settings':
             self._save_json_file('settings.json')
+        elif parsed.path == '/run-scraper':
+            self._trigger_scraper()
         else:
             self.send_error(404, 'Not found')
 
@@ -68,19 +82,23 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
         self._add_cors_headers()
         self.end_headers()
 
-    def _run_scraper_endpoint(self):
-        """Endpoint do ręcznego uruchomienia scraper'a."""
-        def scraper_thread():
-            run_scraper()
-        
-        thread = threading.Thread(target=scraper_thread, daemon=True)
+    def _trigger_scraper(self):
+        """Ręczne uruchomienie scrapera."""
+        if scraper_state['running']:
+            self._send_json({
+                'status': 'already_running',
+                'message': 'Scraper jest już uruchomiony',
+                'started_at': scraper_state.get('last_run', '')
+            })
+            return
+
+        # Start in background thread
+        thread = threading.Thread(target=run_scraper, daemon=True)
         thread.start()
-        
         self._send_json({
-            'status': 'scraper_started',
-            'message': 'Scraper uruchomiony w tle - czekaj ~15 minut',
-            'time': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'check_logs': 'Obserwuj Deploy Logs w Railway panelu'
+            'status': 'started',
+            'message': 'Scraper uruchomiony w tle',
+            'time': time.strftime('%Y-%m-%d %H:%M:%S')
         })
 
     def _serve_json_file(self, filename):
@@ -140,6 +158,14 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
 
 def run_scraper():
     """Uruchom scraper (goliath_v11.py)."""
+    with scraper_lock:
+        if scraper_state['running']:
+            logger.info("⚠️ Scraper already running, skipping")
+            return
+        scraper_state['running'] = True
+        scraper_state['last_run'] = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    start = time.time()
     try:
         logger.info("🔄 Uruchamianie scrapera CUPRA...")
         result = subprocess.run(
@@ -149,15 +175,26 @@ def run_scraper():
             text=True,
             timeout=3600  # 1 hour timeout
         )
+        duration = round(time.time() - start, 1)
+        scraper_state['last_duration'] = f"{duration}s"
+
         if result.returncode == 0:
-            logger.info("✅ Scraper zakończył się pomyślnie")
-            logger.debug(result.stdout[-500:] if result.stdout else "No output")
+            scraper_state['last_status'] = 'success'
+            logger.info(f"✅ Scraper zakończył się pomyślnie ({duration}s)")
+            logger.info(result.stdout[-1000:] if result.stdout else "No output")
         else:
-            logger.error(f"❌ Scraper failed: {result.stderr[-500:]}")
+            scraper_state['last_status'] = 'error'
+            logger.error(f"❌ Scraper failed ({duration}s): {result.stderr[-1000:]}")
+            if result.stdout:
+                logger.error(f"stdout: {result.stdout[-500:]}")
     except subprocess.TimeoutExpired:
+        scraper_state['last_status'] = 'timeout'
         logger.error("❌ Scraper timeout (>1h)")
     except Exception as e:
+        scraper_state['last_status'] = 'exception'
         logger.error(f"❌ Scraper error: {str(e)}")
+    finally:
+        scraper_state['running'] = False
 
 
 def schedule_scraper():
@@ -192,10 +229,11 @@ def main():
     # Uruchom serwer na 0.0.0.0 (dostępny z całego internetu)
     bind_address = ('0.0.0.0', PORT)
     server = http.server.HTTPServer(bind_address, CupraHandler)
-    
-    logger.info(f"🚀 CUPRA HUB Server uruchomiony na porcie {PORT}")
+
+    logger.info(f"🚀 CUPRA HUB Server v2.1 uruchomiony na porcie {PORT}")
     logger.info(f"📍 Dostępny pod: http://0.0.0.0:{PORT}")
     logger.info(f"📂 Baza danych: {BASE_DIR}")
+    logger.info(f"🔗 Ręczne uruchomienie: GET /run-scraper")
 
     try:
         server.serve_forever()

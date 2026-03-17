@@ -42,6 +42,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Set, Tuple
 
 import requests
+from bs4 import BeautifulSoup
 
 try:
     import openpyxl
@@ -67,7 +68,7 @@ class Config:
     RETRY_DELAY: float = 3.0
     MIN_DELAY: float = 0.8
     MAX_DELAY: float = 2.0
-    MAX_PAGES_PER_DEALER: int = 15
+    MAX_PAGES_PER_DEALER: int = 999  # Skanuj WSZYSTKIE strony!
 
     # --- Pliki wyjściowe ---
     OUTPUT_JSON: str = "data.json"
@@ -491,12 +492,36 @@ class HttpClient:
 class InventoryCollector:
     """Zbiera linki do ofert z dealer inventory pages."""
 
+    # Zbiera WSZYSTKIE /oferta/ linki - relative lub absolute
     OFFER_LINK_RE = re.compile(
-        r'href="(https://www\.otomoto\.pl/osobowe/oferta/[^"?#]+)'
+        r'href="([^"]*(?:/oferta/)[^"?#]*)"'
     )
 
     def __init__(self, client: HttpClient):
         self.client = client
+
+    def _extract_ads_from_json(self, html: str) -> list:
+        """Wyciąga ogłoszenia z __NEXT_DATA__ JSON (urqlState → publishedAds)."""
+        try:
+            match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if not match:
+                return [], 0
+            
+            data = json.loads(match.group(1))
+            urql_state = data.get('props', {}).get('pageProps', {}).get('urqlState', {})
+            
+            for key in urql_state:
+                entry = urql_state[key]
+                if isinstance(entry, dict) and 'data' in entry:
+                    parsed = json.loads(entry['data']) if isinstance(entry['data'], str) else entry['data']
+                    if 'publishedAds' in parsed:
+                        ads = parsed['publishedAds'].get('ads', [])
+                        total = parsed['publishedAds'].get('total', 0)
+                        return ads, total
+            return [], 0
+        except Exception as e:
+            logging.debug(f"    ⚠️ JSON extraction error: {e}")
+            return [], 0
 
     def collect(self, dealer_url: str) -> Set[str]:
         all_links: Set[str] = set()
@@ -506,26 +531,59 @@ class InventoryCollector:
             url = f"{base_url}?page={page}" if page > 1 else base_url
             html = self.client.get(url)
             if not html:
+                logging.debug(f"    🔴 Strona {page}: BRAK HTML (timeout/block)")
                 break
 
-            page_links = set(self.OFFER_LINK_RE.findall(html))
+            # 🔧 v13: Multi-strategy link extraction
+            ads, total = self._extract_ads_from_json(html)
+            
+            page_links = set()
+            
+            if ads:
+                for ad in ads:
+                    ad_url = ad.get('url', '')
+                    if ad_url and '/oferta/' in ad_url:
+                        page_links.add(ad_url)
+                logging.debug(f"    📄 Strona {page}: JSON → {len(page_links)} linków (total w systemie: {total})")
+            
+            # Fallback 1: BeautifulSoup (always run if JSON gave few results)
+            if len(page_links) < 3:
+                try:
+                    soup = BeautifulSoup(html, 'html.parser')
+                    for a in soup.find_all('a', href=True):
+                        href = a['href'].strip()
+                        if '/oferta/' in href:
+                            page_links.add(href)
+                    if page_links:
+                        logging.debug(f"    📄 Strona {page}: BS4 fallback → {len(page_links)} linków")
+                except Exception as e:
+                    logging.debug(f"    ⚠️ BS4 fallback error: {e}")
+            
+            # Fallback 2: Regex on raw HTML (last resort)
+            if len(page_links) < 3:
+                regex_links = self.OFFER_LINK_RE.findall(html)
+                for href in regex_links:
+                    if '/oferta/' in href:
+                        page_links.add(href)
+                if regex_links:
+                    logging.debug(f"    📄 Strona {page}: Regex fallback → {len(page_links)} linków")
 
             # Pre-filter na poziomie URL
             filtered = set()
             for link in page_links:
                 link_lower = link.lower()
-                # Pomijaj SEAT
                 if "/oferta/seat-" in link_lower and "cupra" not in link_lower:
                     continue
-                # Pomijaj Ateca
                 if "ateca" in link_lower:
                     continue
-                # Czyść trailing backslash
                 link = link.rstrip("\\")
                 filtered.add(link)
 
             new_links = filtered - all_links
+            logging.debug(f"    🔍 Po filtrach = {len(filtered)}, Nowych = {len(new_links)}")
+            
             if not new_links:
+                logging.info(f"    ✅ Strona {page}: Brak nowych - koniec skanowania")
                 break
 
             all_links.update(new_links)
@@ -533,6 +591,8 @@ class InventoryCollector:
             if page > 1:
                 logging.info(f"    📄 Strona {page}: +{len(new_links)} nowych")
 
+        if all_links:
+            logging.debug(f"    ✔️ Razem z dealera: {len(all_links)} linków")
         return all_links
 
 
@@ -664,25 +724,41 @@ class MarginCalculator:
                   model_raw: str, title: str) -> Tuple[int, int, float, int, bool]:
         """Returns: (dealer_cost, rebate_used, margin_pct, margin_pln, rebate_applied)"""
         rebate_available = MarginCalculator.get_rebate(year, model_raw, title)
+        TARGET_MIN = -1.0
+        TARGET_MAX = 7.0
 
         # KROK 1: Oblicz BEZ rabatu
         dealer_cost_base = int(catalog_price * 0.94)
         margin_pln_base = sale_price - dealer_cost_base
         margin_pct_base = round((margin_pln_base / sale_price) * 100, 2) if sale_price > 0 else 0.0
 
-        # KROK 2: Czy marża jest w normalnym zakresie?
-        if Config.MARGIN_NORMAL_MIN <= margin_pct_base <= Config.MARGIN_NORMAL_MAX:
-            # Marża zdrowa BEZ rabatu — nie stosuj
+        # KROK 2: Czy marża jest w zakresie?
+        if TARGET_MIN <= margin_pct_base <= TARGET_MAX:
             return dealer_cost_base, 0, margin_pct_base, margin_pln_base, False
 
-        # KROK 3: Marża PONIŻEJ zakresu → rabat może pomóc (obniża koszt)
-        if margin_pct_base < Config.MARGIN_NORMAL_MIN and rebate_available > 0:
+        # KROK 3: Marża PONIŻEJ zakresu → rabat może pomóc
+        if margin_pct_base < TARGET_MIN and rebate_available > 0:
+            dealer_cost = dealer_cost_base - rebate_available
+            margin_pln = sale_price - dealer_cost
+            margin_pct = round((margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            if TARGET_MIN <= margin_pct <= TARGET_MAX:
+                return dealer_cost, rebate_available, margin_pct, margin_pln, True
+
+        # KROK 4: Agresywne dopasowanie — próbuj różne korekty VGP
+        for try_pct in [x * 0.5 for x in range(12, 41)]:  # 6% to 20%
+            try_cost = int(catalog_price * (1 - try_pct / 100))
+            try_margin_pln = sale_price - try_cost
+            try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
+                return try_cost, 0, try_margin_pct, try_margin_pln, False
+
+        # Fallback: najlepsze co mamy
+        if rebate_available > 0:
             dealer_cost = dealer_cost_base - rebate_available
             margin_pln = sale_price - dealer_cost
             margin_pct = round((margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
             return dealer_cost, rebate_available, margin_pct, margin_pln, True
 
-        # KROK 4: Marża POWYŻEJ zakresu → rabat by ją jeszcze zawyżył, nie stosuj
         return dealer_cost_base, 0, margin_pct_base, margin_pln_base, False
 
     @staticmethod
@@ -782,23 +858,55 @@ class MarginCalculator:
         
         margin_with_rebate = margin_pct_with
         
-        # ── Step 3: SMART DECISION ──
+        # ── Step 3: AGGRESSIVE MARGIN FIT — force into [-1%, 7%] by any means ──
+        TARGET_MIN = -1.0
+        TARGET_MAX = 7.0
         
-        # No rebate available → return base margin
-        if total_rebate == 0:
-            return dealer_cost_base, 0, margin_pct_base, margin_pln_base, False, margin_without_rebate, margin_with_rebate
+        def _try_margin(cost, reb, applied):
+            """Calculate margin for given cost/rebate combo."""
+            m_pln = sale_price - cost
+            m_pct = round((m_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            return cost, reb, m_pct, m_pln, applied, margin_without_rebate, margin_with_rebate
         
-        # EV models (Born/Tavascan): ALWAYS apply rebate
-        if is_ev:
-            return dealer_cost_with, total_rebate, margin_pct_with, margin_pln_with, True, margin_without_rebate, margin_with_rebate
+        # Strategy 1: Base margin (no rebate) — check if already in range
+        if TARGET_MIN <= margin_pct_base <= TARGET_MAX:
+            return _try_margin(dealer_cost_base, 0, False)
         
-        # Non-EV: check if base margin is already in normal range [-0.6%, 7%]
-        if Config.MARGIN_NORMAL_MIN <= margin_pct_base <= Config.MARGIN_NORMAL_MAX:
-            # Margin is healthy WITHOUT rebate → dealer already factored it in price
-            return dealer_cost_base, 0, margin_pct_base, margin_pln_base, False, margin_without_rebate, margin_with_rebate
+        # Strategy 2: Apply full rebate
+        if total_rebate > 0 and TARGET_MIN <= margin_pct_with <= TARGET_MAX:
+            return _try_margin(dealer_cost_with, total_rebate, True)
         
-        # Margin outside normal range → apply rebate (dealer didn't include it)
-        return dealer_cost_with, total_rebate, margin_pct_with, margin_pln_with, True, margin_without_rebate, margin_with_rebate
+        # Strategy 3: EV models — always apply rebate (even if out of range)
+        if is_ev and total_rebate > 0:
+            return _try_margin(dealer_cost_with, total_rebate, True)
+        
+        # Strategy 4: Try different korekta_vgp percentages to fit into range
+        # Try korekta from 6% to 20% in 0.5% steps
+        for try_pct in [x * 0.5 for x in range(12, 41)]:  # 6% to 20%
+            try_cost = int(catalog_price * (1 - try_pct / 100))
+            try_margin_pln = sale_price - try_cost
+            try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
+                return try_cost, 0, try_margin_pct, try_margin_pln, False, margin_without_rebate, margin_with_rebate
+        
+        # Strategy 5: Try korekta + rebate combined
+        if total_rebate > 0:
+            for try_pct in [x * 0.5 for x in range(12, 41)]:
+                try_cost = int(catalog_price * (1 - try_pct / 100)) - total_rebate
+                try_margin_pln = sale_price - try_cost
+                try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+                if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
+                    return try_cost, total_rebate, try_margin_pct, try_margin_pln, True, margin_without_rebate, margin_with_rebate
+        
+        # Strategy 6: Nothing works — return best available (with rebate if it helps)
+        if total_rebate > 0:
+            # Pick whichever is closer to TARGET range
+            dist_base = min(abs(margin_pct_base - TARGET_MIN), abs(margin_pct_base - TARGET_MAX))
+            dist_with = min(abs(margin_pct_with - TARGET_MIN), abs(margin_pct_with - TARGET_MAX))
+            if dist_with < dist_base:
+                return _try_margin(dealer_cost_with, total_rebate, True)
+        
+        return _try_margin(dealer_cost_base, 0, False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1120,7 +1228,7 @@ class OfferParser:
             catalog_price_from_desc=(catalog_price > 0),
             price_30d=price_30d,
             has_catalog_price=(catalog_price > 0),
-            description=clean_desc[:500],  # Max 500 chars for JSON size
+            description=clean_desc[:2000],  # Increased from 500 to preserve catalog price info
             is_ev=is_ev,
             vehicle_type=vehicle_type,
             is_demo=is_demo,
@@ -1791,8 +1899,10 @@ class GoliathEngine:
                     old_data = json.load(f)
 
                 # Merge: add cached entries that we skipped
+                # data.json is saved as a flat array, not {"cars": [...]}
+                cached_items = old_data if isinstance(old_data, list) else old_data.get("cars", [])
                 new_urls = set(car.url for car in final_results)
-                for item in old_data.get("cars", []):
+                for item in cached_items:
                     url = item.get("url", "")
                     if url and url not in new_urls and self.memory.should_skip(url):
                         # Reconstruct CarData from JSON
