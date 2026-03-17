@@ -614,6 +614,7 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
         </div>
 
         <div class="nav-sync">LAST SYNC: <span id="syncTime">-</span></div>
+        <div id="scraperStatusDiv" class="nav-sync" onclick="triggerScraper()" title="Kliknij żeby uruchomić scraper" style="cursor:pointer;padding:3px 10px;border:1px solid var(--border-subtle);border-radius:5px;transition:all 0.3s">🤖 <span id="scraperStatusText" style="color:var(--text-muted)">IDLE</span></div>
         <input type="text" class="nav-search" id="globalSearch" placeholder="Szukaj...">
         <button class="btn-export" onclick="exportAnalityka()">EXPORT</button>
     </div>
@@ -2810,6 +2811,75 @@ const REBATES_JSON = {
         }
     }
 };
+
+
+/* ============================================================
+   SCRAPER STATUS & CONTROL
+   ============================================================ */
+async function checkScraperStatus() {
+    try {
+        const r = await fetch('/api/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        const s = await r.json();
+        const scraper = s.scraper || {};
+        const el = document.getElementById('scraperStatusText');
+        const div = document.getElementById('scraperStatusDiv');
+        if (!el) return;
+        if (scraper.running) {
+            el.textContent = '🔄 DZIAŁA';
+            el.style.color = 'var(--yellow)';
+            if (div) div.style.borderColor = 'rgba(251,191,36,0.4)';
+            // Auto-reload when done
+            setTimeout(checkScraperStatus, 5000);
+        } else if (scraper.last_status === 'success') {
+            const t = scraper.last_run ? scraper.last_run.slice(5,16) : '';
+            el.textContent = '✅ ' + t;
+            el.style.color = 'var(--green)';
+            if (div) div.style.borderColor = 'rgba(74,222,128,0.3)';
+            // Reload data after successful scrape
+            if (el.dataset.wasRunning === '1') {
+                el.dataset.wasRunning = '0';
+                setTimeout(() => { loadData(); }, 2000);
+            }
+        } else if (scraper.last_status === 'error' || scraper.last_status === 'timeout') {
+            el.textContent = '❌ BŁĄD';
+            el.style.color = 'var(--red)';
+            if (div) div.style.borderColor = 'rgba(248,113,113,0.3)';
+        } else {
+            el.textContent = 'IDLE';
+            el.style.color = 'var(--text-muted)';
+        }
+    } catch(e) {}
+}
+
+async function triggerScraper() {
+    const el = document.getElementById('scraperStatusText');
+    if (el && el.textContent.includes('DZIAŁA')) {
+        alert('Scraper już działa! Poczekaj aż skończy (~5 min).');
+        return;
+    }
+    if (!confirm('Uruchomić scraper?\nZbierze świeże dane ze wszystkich dealerów (~5 minut).')) return;
+    try {
+        const r = await fetch('/run-scraper');
+        const d = await r.json();
+        if (d.status === 'started' || d.status === 'already_running') {
+            if (el) { el.textContent = '🔄 DZIAŁA'; el.style.color = 'var(--yellow)'; el.dataset.wasRunning = '1'; }
+            // Poll every 5 seconds
+            const poll = setInterval(async () => {
+                const s2 = await fetch('/api/status', { cache: 'no-store' }).then(r => r.json());
+                if (!s2.scraper.running) {
+                    clearInterval(poll);
+                    checkScraperStatus();
+                    setTimeout(() => loadData(), 2000);
+                }
+            }, 5000);
+        }
+    } catch(e) { alert('Błąd połączenia z serwerem'); }
+}
+
+// Check scraper status on load + every 30s
+checkScraperStatus();
+setInterval(checkScraperStatus, 30000);
 
 </script>
 </body>
