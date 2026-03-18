@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-CUPRA HUB — HTTP Server + Auto Scraper v2.1
+CUPRA HUB — HTTP Server + Auto Scraper v2.2
 Serwuje pliki statyczne + API do odczytu/zapisu ustawień.
 Automatycznie uruchamia scraper co dzień o 06:00 UTC.
 Endpoint /run-scraper do ręcznego uruchomienia.
+FIXES v2.2:
+  - No-cache headers na wszystkich API endpointach
+  - /run-scraper jako POST (nie GET) aby uniknąć cache CDN
+  - /api/logs endpoint do podglądu logów scrapera
+  - Auto-start scrapera przy uruchomieniu serwera (po 60s)
 """
 import http.server
 import json
@@ -26,6 +31,18 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Przechowuj ostatnie 200 linii logów scrapera
+scraper_logs = []
+scraper_logs_lock = threading.Lock()
+
+MAX_LOG_LINES = 200
+
+def add_scraper_log(line):
+    with scraper_logs_lock:
+        scraper_logs.append(line)
+        if len(scraper_logs) > MAX_LOG_LINES:
+            del scraper_logs[:-MAX_LOG_LINES]
 
 # Track scraper state
 scraper_state = {
@@ -56,10 +73,21 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'data_exists': os.path.exists(os.path.join(BASE_DIR, 'data.json')),
                 'settings_exists': os.path.exists(os.path.join(BASE_DIR, 'settings.json')),
-                'server_version': '2.1-railway',
+                'server_version': '2.2-railway',
                 'scraper': scraper_state,
             })
+        elif parsed.path == '/api/logs':
+            # Logi scrapera w czasie rzeczywistym
+            with scraper_logs_lock:
+                logs_copy = list(scraper_logs)
+            self._send_json({
+                'running': scraper_state['running'],
+                'last_run': scraper_state['last_run'],
+                'last_status': scraper_state['last_status'],
+                'lines': logs_copy
+            })
         elif parsed.path == '/run-scraper':
+            # Obsługa GET dla wstecznej kompatybilności
             self._trigger_scraper()
         elif parsed.path == '/' or parsed.path == '':
             self.path = '/index.html'
@@ -142,6 +170,10 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self._add_cors_headers()
         self.send_header('Content-Length', str(len(body)))
+        # WAŻNE: No-cache headers — zapobiega cachowaniu przez CDN/Railway
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
         self.end_headers()
         self.wfile.write(body)
 
@@ -165,34 +197,49 @@ def run_scraper():
         scraper_state['running'] = True
         scraper_state['last_run'] = time.strftime('%Y-%m-%d %H:%M:%S')
 
+    add_scraper_log(f"[{time.strftime('%H:%M:%S')}] 🚀 Scraper uruchomiony...")
     start = time.time()
     try:
         logger.info("🔄 Uruchamianie scrapera CUPRA...")
-        result = subprocess.run(
+        process = subprocess.Popen(
             [sys.executable, os.path.join(BASE_DIR, 'goliath_v11.py')],
             cwd=BASE_DIR,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=3600  # 1 hour timeout
+            encoding='utf-8',
+            errors='replace'
         )
+        
+        # Czytaj output w czasie rzeczywistym
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                logger.info(f"[SCRAPER] {line}")
+                add_scraper_log(line)
+        
+        process.wait(timeout=3600)
         duration = round(time.time() - start, 1)
         scraper_state['last_duration'] = f"{duration}s"
 
-        if result.returncode == 0:
+        if process.returncode == 0:
             scraper_state['last_status'] = 'success'
-            logger.info(f"✅ Scraper zakończył się pomyślnie ({duration}s)")
-            logger.info(result.stdout[-1000:] if result.stdout else "No output")
+            msg = f"✅ Scraper zakończył się pomyślnie ({duration}s)"
+            logger.info(msg)
+            add_scraper_log(f"[{time.strftime('%H:%M:%S')}] {msg}")
         else:
             scraper_state['last_status'] = 'error'
-            logger.error(f"❌ Scraper failed ({duration}s): {result.stderr[-1000:]}")
-            if result.stdout:
-                logger.error(f"stdout: {result.stdout[-500:]}")
+            msg = f"❌ Scraper failed z kodem {process.returncode} ({duration}s)"
+            logger.error(msg)
+            add_scraper_log(f"[{time.strftime('%H:%M:%S')}] {msg}")
     except subprocess.TimeoutExpired:
         scraper_state['last_status'] = 'timeout'
         logger.error("❌ Scraper timeout (>1h)")
+        add_scraper_log("❌ TIMEOUT")
     except Exception as e:
         scraper_state['last_status'] = 'exception'
         logger.error(f"❌ Scraper error: {str(e)}")
+        add_scraper_log(f"❌ Exception: {str(e)}")
     finally:
         scraper_state['running'] = False
 
@@ -212,6 +259,15 @@ def schedule_scraper():
     logger.info("⏰ Scheduler uruchomiony - scraper będzie działać codziennie o 06:00 UTC")
 
 
+def auto_start_scraper():
+    """Auto-start scrapera po uruchomieniu serwera (odczekaj 60s aby serwer był gotowy)."""
+    logger.info("⏳ Auto-start: Czekam 60s przed uruchomieniem scrapera...")
+    time.sleep(60)
+    logger.info("🔄 Auto-start: Uruchamiam scraper (świeże dane po deploymencie)...")
+    add_scraper_log(f"[{time.strftime('%H:%M:%S')}] 🔄 Auto-start po deploymencie...")
+    run_scraper()
+
+
 def main():
     # Zmień na UTF-8 na Windows
     if sys.platform == 'win32':
@@ -226,14 +282,19 @@ def main():
     # Uruchom scheduler
     schedule_scraper()
 
+    # Auto-start scrapera po 60s (pobierz świeże dane po deploymencie)
+    auto_thread = threading.Thread(target=auto_start_scraper, daemon=True)
+    auto_thread.start()
+
     # Uruchom serwer na 0.0.0.0 (dostępny z całego internetu)
     bind_address = ('0.0.0.0', PORT)
     server = http.server.HTTPServer(bind_address, CupraHandler)
 
-    logger.info(f"🚀 CUPRA HUB Server v2.1 uruchomiony na porcie {PORT}")
+    logger.info(f"🚀 CUPRA HUB Server v2.2 uruchomiony na porcie {PORT}")
     logger.info(f"📍 Dostępny pod: http://0.0.0.0:{PORT}")
     logger.info(f"📂 Baza danych: {BASE_DIR}")
-    logger.info(f"🔗 Ręczne uruchomienie: GET /run-scraper")
+    logger.info(f"🔗 Uruchomienie scrapera: POST /run-scraper lub GET /run-scraper")
+    logger.info(f"📋 Logi scrapera: GET /api/logs")
 
     try:
         server.serve_forever()
