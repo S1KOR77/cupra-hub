@@ -1257,7 +1257,7 @@ class OfferParser:
                 car.margin_without_rebate_pct = margin_without_rebate
                 car.margin_with_rebate_pct = margin_with_rebate
                 
-                # Status for EVs
+                # Status for EVs — nigdy ANOMALIA (elektryki mają inne struktury VGP)
                 if vehicle_type == "demo":
                     car.status = "DEMO"
                 elif vehicle_type == "used":
@@ -1265,7 +1265,7 @@ class OfferParser:
                 elif Config.MARGIN_NORMAL_MIN <= car.margin_pct <= Config.MARGIN_NORMAL_MAX:
                     car.status = "OK"
                 else:
-                    car.status = "ANOMALIA"
+                    car.status = "ELEKTRYK_OK"  # Born/Tavascan zawsze ELEKTRYK_OK, nie ANOMALIA"
             else:
                 car.status = "ELEKTRYK_OK"
         elif car.has_catalog_price and car.sale_price > 0:
