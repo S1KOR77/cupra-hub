@@ -1031,6 +1031,16 @@ async function loadData() {
             if (!v.dealer_short) v.dealer_short = v.dealer ? v.dealer.substring(0, 25) : '-';
         });
         EDITED_PRICES = JSON.parse(localStorage.getItem('edited_prices') || '{}');
+        // Synchronizuj z serwerem (overrides persystentne)
+        try {
+            const ov = await fetch('/api/overrides', {cache:'no-store'});
+            if (ov.ok) {
+                const serverOverrides = await ov.json();
+                // Merge: server overrides mają priorytet
+                Object.assign(EDITED_PRICES, serverOverrides);
+                localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+            }
+        } catch(e) { console.log('Overrides server unavailable, using localStorage'); }
         // RABATY: ładuj z SETTINGS.rebates (zamiast localStorage)
         if (SETTINGS && SETTINGS.rebates && Array.isArray(SETTINGS.rebates)) {
             DISCOUNTS = SETTINGS.rebates.map(r => ({
@@ -1526,7 +1536,7 @@ function calcEditPreview(id) {
     document.getElementById('epMPct').style.cssText = marginColor(mpct);
 }
 
-function saveEdit(id) {
+async function saveEdit(id) {
     const sp = parseFloat(document.getElementById('editSalePrice').value);
     const cp = parseFloat(document.getElementById('editCatalogPrice').value);
     if (!sp && !cp) { closeModal(); return; }
@@ -1534,13 +1544,29 @@ function saveEdit(id) {
     if (sp) EDITED_PRICES[id].sale_price = sp;
     if (cp) EDITED_PRICES[id].catalog_price = cp;
     localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+    // Zapisz na serwer (persystentnie)
+    try {
+        await fetch('/api/overrides', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({otomoto_id: id, ...EDITED_PRICES[id]})
+        });
+    } catch(e) {}
     closeModal();
     renderMagazyn();
 }
 
-function clearEdit(id) {
+async function clearEdit(id) {
     delete EDITED_PRICES[id];
     localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+    // Usuń z serwera
+    try {
+        await fetch('/api/overrides/delete', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({otomoto_id: id})
+        });
+    } catch(e) {}
     closeModal();
     renderMagazyn();
 }
@@ -2507,10 +2533,14 @@ document.addEventListener('DOMContentLoaded', async () => {
    ============================================================ */
 
 /* Reset all manual price edits */
-function resetAllEdits() {
+async function resetAllEdits() {
     if (!confirm('Czy na pewno chcesz zresetować wszystkie ręczne edycje cen?')) return;
     EDITED_PRICES = {};
     localStorage.removeItem('edited_prices');
+    // Wyczyść też na serwerze
+    try {
+        await fetch('/api/overrides/clear', {method:'POST'});
+    } catch(e) {}
     renderMagazyn();
     closeModal();
 }
