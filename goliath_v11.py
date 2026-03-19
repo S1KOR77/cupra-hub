@@ -678,6 +678,7 @@ class MarginCalculator:
             
             entry_year = entry.get("year", 0)
             if entry_year != year:
+                continue
             
             # WARIANT MATCHING (v13) — Leon ST, VZ, itd.
             entry_variant = entry.get("variant", "").lower()
@@ -694,8 +695,6 @@ class MarginCalculator:
             if entry_variant and entry_variant != "all":
                 if entry_variant != title_variant and not (entry_variant == "kud/kug" and not title_variant):
                     continue
-            
-                continue
             
             # Fuel matching
             entry_fuel = entry.get("fuel", "all").lower()
