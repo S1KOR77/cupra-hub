@@ -744,15 +744,7 @@ class MarginCalculator:
             if TARGET_MIN <= margin_pct <= TARGET_MAX:
                 return dealer_cost, rebate_available, margin_pct, margin_pln, True
 
-        # KROK 4: Agresywne dopasowanie — próbuj różne korekty VGP
-        for try_pct in [x * 0.5 for x in range(12, 41)]:  # 6% to 20%
-            try_cost = int(catalog_price * (1 - try_pct / 100))
-            try_margin_pln = sale_price - try_cost
-            try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
-            if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
-                return try_cost, 0, try_margin_pct, try_margin_pln, False
-
-        # Fallback: najlepsze co mamy
+        # Fallback: najlepsze co mamy (bez fikcyjnych korekt VGP)
         if rebate_available > 0:
             dealer_cost = dealer_cost_base - rebate_available
             margin_pln = sale_price - dealer_cost
@@ -880,30 +872,15 @@ class MarginCalculator:
         if is_ev and total_rebate > 0:
             return _try_margin(dealer_cost_with, total_rebate, True)
         
-        # Strategy 4: Try different korekta_vgp percentages to fit into range
-        # Try korekta from 6% to 20% in 0.5% steps
-        for try_pct in [x * 0.5 for x in range(12, 41)]:  # 6% to 20%
-            try_cost = int(catalog_price * (1 - try_pct / 100))
-            try_margin_pln = sale_price - try_cost
-            try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
-            if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
-                return try_cost, 0, try_margin_pct, try_margin_pln, False, margin_without_rebate, margin_with_rebate
-        
-        # Strategy 5: Try korekta + rebate combined
+        # Strategy 4: FALLBACK — zawsze używaj PRAWDZIWEGO kosztu dealera!
+        # ⚠️ USUNIĘTO Strategie 4 i 5 które wymyślały fikcyjne korekty VGP (6%-20%).
+        # Przez to koszt dealera był za niski/wysoki a marże przekłamane.
+        # Teraz: dealer_cost = zawsze catalog × (1 - korekta_vgp z settings.json)
         if total_rebate > 0:
-            for try_pct in [x * 0.5 for x in range(12, 41)]:
-                try_cost = int(catalog_price * (1 - try_pct / 100)) - total_rebate
-                try_margin_pln = sale_price - try_cost
-                try_margin_pct = round((try_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
-                if TARGET_MIN <= try_margin_pct <= TARGET_MAX:
-                    return try_cost, total_rebate, try_margin_pct, try_margin_pln, True, margin_without_rebate, margin_with_rebate
-        
-        # Strategy 6: Nothing works — return best available (with rebate if it helps)
-        if total_rebate > 0:
-            # Pick whichever is closer to TARGET range
+            # Wybierz wersję (z/bez rabatu) bliżej zakresu docelowego
             dist_base = min(abs(margin_pct_base - TARGET_MIN), abs(margin_pct_base - TARGET_MAX))
             dist_with = min(abs(margin_pct_with - TARGET_MIN), abs(margin_pct_with - TARGET_MAX))
-            if dist_with < dist_base:
+            if dist_with <= dist_base:
                 return _try_margin(dealer_cost_with, total_rebate, True)
         
         return _try_margin(dealer_cost_base, 0, False)
