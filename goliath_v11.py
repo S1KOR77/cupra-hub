@@ -759,7 +759,7 @@ class MarginCalculator:
                       rebate_from_desc: int = 0,
                       price_after_rebate_from_desc: int = 0) -> Tuple[int, int, float, int, bool, float, float]:
         """
-        v12 — CORRECTED MARGIN CALCULATION:
+        v13 — PRAWIDLOWA KALKULACJA: zawsze X = katalog * 0.94 (-6% VGP), potem X - rabat_PLN(paliwo):
         
         Base discount = korekta_vgp from settings.json:
           Leon/Born/Tavascan: 13%
@@ -790,11 +790,11 @@ class MarginCalculator:
         # ── Dealer discount from VGP (korekta) ──
         # This is the % the dealer gets off catalog price from the importer
         # Leon/Born/Tavascan: 13%, Formentor/Terramar: 9%
-        model_pcts = DEALER_PCTS.get(model_key, {})
-        korekta_pct = model_pcts.get("korekta_vgp", 13.0) / 100.0
-        
-        # ── Base dealer cost (WITH korekta but WITHOUT PLN rebate) ──
-        dealer_cost_base = int(catalog_price * (1 - korekta_pct))
+        # ── Base dealer cost: ZAWSZE 6% VGP (dealer_base_discount_pct z settings.json) ──
+        # Formuła: X = cena_katalogowa * 0.94 — punkt wyjscia dla WSZYSTKICH modeli
+        # Nastepnie: dealer_cost = X - rabat_PLN (zalezy od paliwa/modelu/roku)
+        base_discount_pct = MARGIN_CFG.get("dealer_base_discount_pct", 6.0) / 100.0
+        dealer_cost_base = int(catalog_price * (1.0 - base_discount_pct))
         
         # ── Find best PLN rebate from importer ──
         rebate_available = MarginCalculator.get_rebate(year, model_raw, title, fuel)
