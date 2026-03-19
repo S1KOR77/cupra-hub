@@ -816,7 +816,8 @@ class MarginCalculator:
     def calculate_v10(catalog_price: int, sale_price: int, year: int,
                       model_raw: str, title: str, description: str = "",
                       rebate_from_desc: int = 0,
-                      price_after_rebate_from_desc: int = 0) -> Tuple[int, int, float, int, bool, float, float]:
+                      price_after_rebate_from_desc: int = 0,
+                      fuel_override: str = "") -> Tuple[int, int, float, int, bool, float, float]:
         """
         v13 — PRAWIDLOWA KALKULACJA: zawsze X = katalog * 0.94 (-6% VGP), potem X - rabat_PLN(paliwo):
         
@@ -843,6 +844,8 @@ class MarginCalculator:
         # Force elektryk fuel for Born/Tavascan
         if is_ev:
             fuel = "elektryk"
+        elif fuel_override:
+            fuel = fuel_override  # Użyj już wykrytego paliwa (z Otomoto fuel_label)
         else:
             fuel = MarginCalculator.get_fuel_type(description, title)
         
@@ -1270,7 +1273,8 @@ class OfferParser:
                     MarginCalculator.calculate_v10(
                         car.catalog_price, car.sale_price, car.year,
                         car.model_raw, car.title, car.description,
-                        rebate_from_desc, price_after_rebate_from_desc
+                        rebate_from_desc, price_after_rebate_from_desc,
+                        fuel_override=fuel_real  # Przekaż prawidłowe paliwo
                     )
                 )
                 car.margin_without_rebate_pct = margin_without_rebate
@@ -1292,8 +1296,9 @@ class OfferParser:
             car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln, car.rebate_applied, margin_without_rebate, margin_with_rebate = (
                 MarginCalculator.calculate_v10(
                     car.catalog_price, car.sale_price, car.year,
-                    car.model_raw, car.title, car.description,  # ← description dla rozpoznania paliwa!
-                    rebate_from_desc, price_after_rebate_from_desc
+                    car.model_raw, car.title, car.description,
+                    rebate_from_desc, price_after_rebate_from_desc,
+                    fuel_override=fuel_real  # Użyj paliwa z Otomoto (priorytet 1)
                 )
             )
             car.margin_without_rebate_pct = margin_without_rebate
@@ -1967,6 +1972,39 @@ class GoliathEngine:
                         )
                         # Only add if still active on Otomoto
                         if url in active_urls:
+                            # 🔧 KRYTYCZNE: Przelicz marżę z AKTUALNYCH ustawień!
+                            # (cache może mieć stare dane z błędnymi rabatami)
+                            if cached_car.has_catalog_price and cached_car.sale_price > 0:
+                                try:
+                                    fuel_for_calc = cached_car.fuel or "benzyna"
+                                    (cached_car.dealer_cost, cached_car.rebate,
+                                     cached_car.margin_pct, cached_car.margin_pln,
+                                     cached_car.rebate_applied,
+                                     cached_car.margin_without_rebate_pct,
+                                     cached_car.margin_with_rebate_pct) = (
+                                        MarginCalculator.calculate_v10(
+                                            cached_car.catalog_price, cached_car.sale_price,
+                                            cached_car.year, cached_car.model_raw,
+                                            cached_car.title, cached_car.description,
+                                            fuel_override=fuel_for_calc
+                                        )
+                                    )
+                                    # Zaktualizuj status
+                                    if cached_car.vehicle_type == "demo":
+                                        cached_car.status = "DEMO"
+                                    elif cached_car.vehicle_type == "used":
+                                        cached_car.status = "UŻYWANE"
+                                    elif cached_car.is_ev:
+                                        if Config.MARGIN_NORMAL_MIN <= cached_car.margin_pct <= Config.MARGIN_NORMAL_MAX:
+                                            cached_car.status = "OK"
+                                        else:
+                                            cached_car.status = "ELEKTRYK_OK"
+                                    elif Config.MARGIN_NORMAL_MIN <= cached_car.margin_pct <= Config.MARGIN_NORMAL_MAX:
+                                        cached_car.status = "OK"
+                                    else:
+                                        cached_car.status = "ANOMALIA"
+                                except Exception as e:
+                                    logging.debug(f"  Cache recalc error: {e}")
                             final_results.append(cached_car)
                             new_urls.add(url)
 
@@ -1974,6 +2012,56 @@ class GoliathEngine:
 
             except Exception as e:
                 logging.warning(f"  ⚠️ Nie udało się merge'ować: {e}")
+
+        # ── Zastosuj ręczne nadpisania cen ──
+        overrides_file = "manual_overrides.json"
+        if os.path.exists(overrides_file):
+            try:
+                with open(overrides_file, 'r', encoding='utf-8') as f:
+                    manual_overrides = json.load(f)
+                applied = 0
+                for car in final_results:
+                    ov = manual_overrides.get(car.otomoto_id, {})
+                    if not ov:
+                        continue
+                    changed = False
+                    if "sale_price" in ov and ov["sale_price"] > 0:
+                        car.sale_price = ov["sale_price"]
+                        changed = True
+                    if "catalog_price" in ov and ov["catalog_price"] > 0:
+                        car.catalog_price = ov["catalog_price"]
+                        car.has_catalog_price = True
+                        changed = True
+                    if "note" in ov:
+                        car.note = ov["note"]
+                    if changed and car.has_catalog_price and car.sale_price > 0:
+                        fuel_ov = car.fuel or "benzyna"
+                        try:
+                            (car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln,
+                             car.rebate_applied, car.margin_without_rebate_pct, car.margin_with_rebate_pct) = (
+                                MarginCalculator.calculate_v10(
+                                    car.catalog_price, car.sale_price, car.year,
+                                    car.model_raw, car.title, car.description,
+                                    fuel_override=fuel_ov
+                                )
+                            )
+                            if car.vehicle_type == "demo":
+                                car.status = "DEMO"
+                            elif car.vehicle_type == "used":
+                                car.status = "UŻYWANE"
+                            elif car.is_ev:
+                                car.status = "OK" if Config.MARGIN_NORMAL_MIN <= car.margin_pct <= Config.MARGIN_NORMAL_MAX else "ELEKTRYK_OK"
+                            elif Config.MARGIN_NORMAL_MIN <= car.margin_pct <= Config.MARGIN_NORMAL_MAX:
+                                car.status = "OK"
+                            else:
+                                car.status = "ANOMALIA"
+                        except Exception as e:
+                            logging.debug(f"Override recalc error: {e}")
+                    applied += 1
+                if applied:
+                    logging.info(f"  🔧 Zastosowano {applied} ręcznych nadpisań cen")
+            except Exception as e:
+                logging.warning(f"  ⚠️ Błąd wczytywania nadpisań: {e}")
 
         # Sort
         status_order = {"OK": 0, "DEMO": 1, "UŻYWANE": 2, "ELEKTRYK_OK": 3, "ANOMALIA": 4, "BRAK_CENY_KAT": 5}
