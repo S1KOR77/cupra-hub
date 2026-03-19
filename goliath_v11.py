@@ -859,7 +859,12 @@ class MarginCalculator:
         dealer_cost_base = int(catalog_price * (1.0 - base_discount_pct))
         
         # ── Find best PLN rebate from importer ──
-        rebate_available = MarginCalculator.get_rebate(year, model_raw, title, fuel)
+        # Dla nie-EV modeli (Leon/Formentor/Terramar): eTSI mHEV może być oznaczony jako
+        # "elektryk" przez Otomoto, ale to łagodna hybryda benzynowa → używamy benzyna do rabatów
+        fuel_for_rebate = fuel
+        if not is_ev and fuel.lower() in ("elektryk", "elektryczny", "ev", "benzyna_elektryk"):
+            fuel_for_rebate = "benzyna"
+        rebate_available = MarginCalculator.get_rebate(year, model_raw, title, fuel_for_rebate)
         
         # Check for rebate mentioned in dealer description
         if rebate_from_desc > 0:
