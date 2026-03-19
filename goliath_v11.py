@@ -617,21 +617,53 @@ class MarginCalculator:
     """
 
     @staticmethod
+    def map_otomoto_fuel_label(fuel_label: str) -> str:
+        """Mapuj etykietę paliwa z Otomoto na nasze kategorie."""
+        if not fuel_label:
+            return ""
+        label = fuel_label.lower().strip()
+        # PHEV / Hybryda plug-in
+        if any(x in label for x in ["plug-in", "plugin", "phev", "hybryda plug", "hybrid plug"]):
+            return "PHEV"
+        # Elektryczny
+        if label in ("elektryczny", "electric", "elektryk", "elektryczna"):
+            return "elektryk"
+        # Diesel
+        if "diesel" in label or "disel" in label:
+            return "diesel"
+        # Benzyna + elektryczny (mild hybrid / e-hybrid bez plug-in)
+        if "benzyna" in label and ("elektr" in label or "hybrid" in label):
+            return "benzyna_elektryk"
+        # Benzyna
+        if "benzyna" in label or "petrol" in label or "gasoline" in label:
+            return "benzyna"
+        # LPG
+        if "lpg" in label or "gaz" in label:
+            return "lpg"
+        return ""
+
+    @staticmethod
     def get_fuel_type(description: str, title: str) -> str:
         """Rozpoznaj typ paliwa z opisu i tytułu."""
         text = f"{description} {title}".lower()
         
-        # PHEV / Plug-in
-        if any(x in text for x in ["phev", "plug-in", "plugin", "spalinowo-elektryczny"]):
+        # PHEV / Plug-in (rozszerzone keywords)
+        if any(x in text for x in ["phev", "plug-in", "plugin", "spalinowo-elektryczny",
+                                    "e-hybrid", "ehybrid", "hybryda plug", "hybrid plug",
+                                    "hybryda ładowan", "hybryd plug"]):
             return "PHEV"
         # Diesel
-        if "diesel" in text or "d5" in text:
+        if "diesel" in text or " tdi" in text or " d5" in text:
             return "diesel"
         # Benzyna + Elektryk (obydwa)
-        if "elektryk" in text and ("benzyna" in text or "lpg" in text):
+        if "elektryczny" in text and ("benzyna" in text or "lpg" in text):
             return "benzyna_elektryk"
-        # Elektryk
-        if "elektryk" in text or "ev" in text:
+        # Elektryk — OSTROŻNIE: tylko pełne słowa/frazy, nie "ev" w środku słowa!
+        if "elektryczny" in text or "elektryczna" in text or "napęd elektryczny" in text:
+            return "elektryk"
+        # "ev" tylko jako samodzielne słowo lub w kontekście EV
+        import re
+        if re.search(r'\bev\b', text):
             return "elektryk"
         # LPG
         if "lpg" in text:
@@ -1192,7 +1224,14 @@ class OfferParser:
         price_changed = self.memory.detect_price_change(url, sale_price)
 
         # ── Detect REAL fuel type (PHEV / Benzyna / Diesel / Elektryk) ──
-        fuel_real = MarginCalculator.get_fuel_type(clean_desc, title_text)
+        # Priorytet 1: parametr fuel_type bezpośrednio z Otomoto (najbardziej wiarygodny)
+        fuel_real = MarginCalculator.map_otomoto_fuel_label(fuel_label)
+        # Priorytet 2: text scan opisu jeśli Otomoto label nie dał wyniku
+        if not fuel_real:
+            fuel_real = MarginCalculator.get_fuel_type(clean_desc, title_text)
+        # Priorytet 3: fallback na benzyna
+        if not fuel_real:
+            fuel_real = "benzyna"
 
         # ── Build CarData ──
         car = CarData(
