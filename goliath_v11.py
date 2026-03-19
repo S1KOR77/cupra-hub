@@ -678,6 +678,23 @@ class MarginCalculator:
             
             entry_year = entry.get("year", 0)
             if entry_year != year:
+            
+            # WARIANT MATCHING (v13) — Leon ST, VZ, itd.
+            entry_variant = entry.get("variant", "").lower()
+            
+            # Extract variant from title (e.g., "Leon ST" → "ST")
+            title_variant = ""
+            title_lower = title.lower()
+            if "sportstourer" in title_lower or " st " in title_lower or " st," in title_lower:
+                title_variant = "st"
+            elif "vz " in title_lower or " vz" in title_lower or " vz," in title_lower:
+                title_variant = "vz"
+            
+            # Skip if variant doesn't match
+            if entry_variant and entry_variant != "all":
+                if entry_variant != title_variant and not (entry_variant == "kud/kug" and not title_variant):
+                    continue
+            
                 continue
             
             # Fuel matching
