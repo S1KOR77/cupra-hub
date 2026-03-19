@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-CUPRA HUB — HTTP Server + Auto Scraper v2.2
+CUPRA HUB — HTTP Server + Auto Scraper v2.3
 Serwuje pliki statyczne + API do odczytu/zapisu ustawień.
 Automatycznie uruchamia scraper co dzień o 06:00 UTC.
 Endpoint /run-scraper do ręcznego uruchomienia.
-FIXES v2.2:
+FIXES v2.3:
+  - /api/overrides GET/POST — ręczna edycja cen
+  - /api/overrides/delete POST — usuwanie nadpisania
   - No-cache headers na wszystkich API endpointach
   - /run-scraper jako POST (nie GET) aby uniknąć cache CDN
   - /api/logs endpoint do podglądu logów scrapera
@@ -73,7 +75,7 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'data_exists': os.path.exists(os.path.join(BASE_DIR, 'data.json')),
                 'settings_exists': os.path.exists(os.path.join(BASE_DIR, 'settings.json')),
-                'server_version': '2.2-railway',
+                'server_version': '2.3-railway',
                 'scraper': scraper_state,
             })
         elif parsed.path == '/api/logs':
@@ -86,6 +88,8 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 'last_status': scraper_state['last_status'],
                 'lines': logs_copy
             })
+        elif parsed.path == '/api/overrides':
+            self._serve_json_file('manual_overrides.json')
         elif parsed.path == '/run-scraper':
             # Obsługa GET dla wstecznej kompatybilności
             self._trigger_scraper()
@@ -100,6 +104,10 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == '/api/settings':
             self._save_json_file('settings.json')
+        elif parsed.path == '/api/overrides':
+            self._save_override()
+        elif parsed.path == '/api/overrides/delete':
+            self._delete_override()
         elif parsed.path == '/run-scraper':
             self._trigger_scraper()
         else:
@@ -132,6 +140,10 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
     def _serve_json_file(self, filename):
         filepath = os.path.join(BASE_DIR, filename)
         if not os.path.exists(filepath):
+            # Dla overrides — zwróć pusty obiekt zamiast błędu
+            if filename == 'manual_overrides.json':
+                self._send_json({})
+                return
             self._send_json({'error': f'{filename} nie znaleziony'}, 404)
             return
         try:
@@ -161,6 +173,74 @@ class CupraHandler(http.server.SimpleHTTPRequestHandler):
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
             self._send_json({'status': 'saved', 'file': filename, 'time': time.strftime('%Y-%m-%d %H:%M:%S')})
+        except Exception as e:
+            self._send_json({'error': str(e)}, 500)
+
+    def _save_override(self):
+        """Zapisz/zaktualizuj nadpisanie ceny dla konkretnego samochodu."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode('utf-8'))
+
+            otomoto_id = str(data.get('otomoto_id', '')).strip()
+            if not otomoto_id:
+                self._send_json({'error': 'Brak otomoto_id'}, 400)
+                return
+
+            filepath = os.path.join(BASE_DIR, 'manual_overrides.json')
+            overrides = {}
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    overrides = json.load(f)
+
+            # Zachowaj tylko niepuste wartości
+            entry = {}
+            try:
+                sp = int(data.get('sale_price', 0))
+                if sp > 0:
+                    entry['sale_price'] = sp
+            except (ValueError, TypeError):
+                pass
+            try:
+                cp = int(data.get('catalog_price', 0))
+                if cp > 0:
+                    entry['catalog_price'] = cp
+            except (ValueError, TypeError):
+                pass
+            if data.get('note'):
+                entry['note'] = str(data['note'])
+
+            overrides[otomoto_id] = entry
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(overrides, f, ensure_ascii=False, indent=2)
+
+            self._send_json({'status': 'saved', 'id': otomoto_id, 'entry': entry})
+        except Exception as e:
+            self._send_json({'error': str(e)}, 500)
+
+    def _delete_override(self):
+        """Usuń nadpisanie dla konkretnego samochodu."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode('utf-8'))
+
+            otomoto_id = str(data.get('otomoto_id', '')).strip()
+            if not otomoto_id:
+                self._send_json({'error': 'Brak otomoto_id'}, 400)
+                return
+
+            filepath = os.path.join(BASE_DIR, 'manual_overrides.json')
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    overrides = json.load(f)
+                overrides.pop(otomoto_id, None)
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(overrides, f, ensure_ascii=False, indent=2)
+
+            self._send_json({'status': 'deleted', 'id': otomoto_id})
         except Exception as e:
             self._send_json({'error': str(e)}, 500)
 
@@ -210,14 +290,14 @@ def run_scraper():
             encoding='utf-8',
             errors='replace'
         )
-        
+
         # Czytaj output w czasie rzeczywistym
         for line in process.stdout:
             line = line.rstrip()
             if line:
                 logger.info(f"[SCRAPER] {line}")
                 add_scraper_log(line)
-        
+
         process.wait(timeout=3600)
         duration = round(time.time() - start, 1)
         scraper_state['last_duration'] = f"{duration}s"
@@ -290,11 +370,12 @@ def main():
     bind_address = ('0.0.0.0', PORT)
     server = http.server.HTTPServer(bind_address, CupraHandler)
 
-    logger.info(f"🚀 CUPRA HUB Server v2.2 uruchomiony na porcie {PORT}")
+    logger.info(f"🚀 CUPRA HUB Server v2.3 uruchomiony na porcie {PORT}")
     logger.info(f"📍 Dostępny pod: http://0.0.0.0:{PORT}")
     logger.info(f"📂 Baza danych: {BASE_DIR}")
     logger.info(f"🔗 Uruchomienie scrapera: POST /run-scraper lub GET /run-scraper")
     logger.info(f"📋 Logi scrapera: GET /api/logs")
+    logger.info(f"✏️  Nadpisania cen: GET/POST /api/overrides")
 
     try:
         server.serve_forever()
