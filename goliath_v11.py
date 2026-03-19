@@ -690,8 +690,16 @@ class MarginCalculator:
         model_key = MarginCalculator.MODEL_REBATE_MAP.get(model_key, model_key)
         title_lower = title.lower()
         
-        # Detect VZ variant
-        is_vz = any(x in title_lower for x in ['vz ', ' vz', 'vz,'])
+        # Detect VZ variant and Leon variant type (before loop)
+        is_vz = any(x in title_lower for x in ['vz ', ' vz', 'vz,', ' vz.'])
+        
+        # Leon: extract variant from title (ST, VZ, standard)
+        title_variant = ""
+        if model_key == "leon":
+            if "sportstourer" in title_lower or " st " in title_lower or " st," in title_lower or title_lower.endswith(" st"):
+                title_variant = "st"
+            elif is_vz:
+                title_variant = "vz"
         
         best_rebate = 0
         best_priority = -1
@@ -712,21 +720,24 @@ class MarginCalculator:
             if entry_year != year:
                 continue
             
-            # WARIANT MATCHING (v13) — Leon ST, VZ, itd.
+            # WARIANT MATCHING — Leon strict, inne modele tylko VZ flag
             entry_variant = entry.get("variant", "").lower()
             
-            # Extract variant from title (e.g., "Leon ST" → "ST")
-            title_variant = ""
-            title_lower = title.lower()
-            if "sportstourer" in title_lower or " st " in title_lower or " st," in title_lower:
-                title_variant = "st"
-            elif "vz " in title_lower or " vz" in title_lower or " vz," in title_lower:
-                title_variant = "vz"
-            
-            # Skip if variant doesn't match
-            if entry_variant and entry_variant != "all":
-                if entry_variant != title_variant and not (entry_variant == "kud/kug" and not title_variant):
-                    continue
+            if model_key == "leon":
+                # Leon: strict variant matching (ST, VZ KUDC/KUGC, standard KUD/KUG)
+                if entry_variant == "st":
+                    if title_variant != "st":
+                        continue
+                elif entry_variant in ("vz kudc/kugc",):
+                    if title_variant != "vz":
+                        continue
+                elif entry_variant == "kud/kug":
+                    if title_variant in ("st", "vz"):
+                        continue
+                # Inne entry_variant dla Leona (nieznane) → pomijamy strict check
+            # Inne modele (Formentor, Terramar, Born, Tavascan):
+            # Wariant to kod techniczny (KMP, KMPB0Y, K11, KR1) — NIE dopasowujemy do tytułu
+            # VZ matching odbywa się przez is_vz flag poniżej
             
             # Fuel matching
             entry_fuel = entry.get("fuel", "all").lower()
@@ -898,40 +909,16 @@ class MarginCalculator:
         
         margin_with_rebate = margin_pct_with
         
-        # ── Step 3: AGGRESSIVE MARGIN FIT — force into [-1%, 7%] by any means ──
-        TARGET_MIN = -1.0
-        TARGET_MAX = 7.0
-        
-        def _try_margin(cost, reb, applied):
-            """Calculate margin for given cost/rebate combo."""
-            m_pln = sale_price - cost
-            m_pct = round((m_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
-            return cost, reb, m_pct, m_pln, applied, margin_without_rebate, margin_with_rebate
-        
-        # Strategy 1: Base margin (no rebate) — check if already in range
-        if TARGET_MIN <= margin_pct_base <= TARGET_MAX:
-            return _try_margin(dealer_cost_base, 0, False)
-        
-        # Strategy 2: Apply full rebate
-        if total_rebate > 0 and TARGET_MIN <= margin_pct_with <= TARGET_MAX:
-            return _try_margin(dealer_cost_with, total_rebate, True)
-        
-        # Strategy 3: EV models — always apply rebate (even if out of range)
-        if is_ev and total_rebate > 0:
-            return _try_margin(dealer_cost_with, total_rebate, True)
-        
-        # Strategy 4: FALLBACK — zawsze używaj PRAWDZIWEGO kosztu dealera!
-        # ⚠️ USUNIĘTO Strategie 4 i 5 które wymyślały fikcyjne korekty VGP (6%-20%).
-        # Przez to koszt dealera był za niski/wysoki a marże przekłamane.
-        # Teraz: dealer_cost = zawsze catalog × (1 - korekta_vgp z settings.json)
+        # ── Step 3: ZAWSZE stosuj rabat (filar kalkulatora) ──
+        # Formuła: dealer_cost = catalog × 0.94 - rabat_PLN  (zawsze, bez wyjątków)
+        # Jeśli marża wychodzi poza zakres [-1%, 7%] → to są PRAWDZIWE liczby, nie błąd
         if total_rebate > 0:
-            # Wybierz wersję (z/bez rabatu) bliżej zakresu docelowego
-            dist_base = min(abs(margin_pct_base - TARGET_MIN), abs(margin_pct_base - TARGET_MAX))
-            dist_with = min(abs(margin_pct_with - TARGET_MIN), abs(margin_pct_with - TARGET_MAX))
-            if dist_with <= dist_base:
-                return _try_margin(dealer_cost_with, total_rebate, True)
-        
-        return _try_margin(dealer_cost_base, 0, False)
+            return (dealer_cost_with, total_rebate, margin_pct_with, margin_pln_with, True,
+                    margin_without_rebate, margin_with_rebate)
+        else:
+            # Brak rabatu w bazie — dealer_cost = catalog × 0.94 (bez korekty)
+            return (dealer_cost_base, 0, margin_pct_base, margin_pln_base, False,
+                    margin_without_rebate, margin_without_rebate)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
