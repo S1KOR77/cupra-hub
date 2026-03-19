@@ -77,7 +77,7 @@ class Config:
     LOG_FILE: str = "goliath.log"
 
     # --- Filtrowanie ---
-    MIN_YEAR: int = 2024
+    MIN_YEAR: int = 2025          # ⚠️ NIE czytamy 2024
     MAX_MILEAGE: int = 30         # Max przebieg w km (nowe auta)
     BLOCKED_MODELS: set = {"ateca", "cupra-ateca"}
     BLOCKED_MAKES: set = {"seat"}
@@ -679,72 +679,46 @@ class MarginCalculator:
     }
 
     @staticmethod
-    def get_rebate(year: int, model_raw: str, title: str, fuel: str = "benzyna") -> int:
+    def get_all_rebates(year: int, model_raw: str, title: str, fuel: str = "benzyna") -> list:
         """
-        Dopasuj rabat z settings.json.
-        Priorytet: standardowe > promocyjne.
-        Dla VZ modeli: szukaj specjalnych rabatów is_vz.
+        Zwraca LISTĘ wszystkich dostępnych rabatów PLN dla danego auta.
+        Leon: ST i KUD/KUG mają te same rabaty — bierz WSZYSTKIE (bez podziału na wariant).
+        Tylko VZ jest osobno (is_vz flag).
+        Zwraca unikalną listę wartości int (bez duplikatów).
         """
         model_key = model_raw.lower().replace("cupra-", "").replace("cupra ", "")
-        # Leon ST / Leon Sportstourer → "leon" (te same rabaty)
         model_key = MarginCalculator.MODEL_REBATE_MAP.get(model_key, model_key)
         title_lower = title.lower()
         
-        # Detect VZ variant and Leon variant type (before loop)
         is_vz = any(x in title_lower for x in ['vz ', ' vz', 'vz,', ' vz.'])
         
-        # Leon: extract variant from title (ST, VZ, standard)
-        title_variant = ""
-        if model_key == "leon":
-            if "sportstourer" in title_lower or " st " in title_lower or " st," in title_lower or title_lower.endswith(" st"):
-                title_variant = "st"
-            elif is_vz:
-                title_variant = "vz"
-        
-        best_rebate = 0
-        best_priority = -1
+        result_amounts = set()
         
         for entry in REBATES_LIST:
             if not entry.get("active", True):
                 continue
-
-            # Skip percentage-based entries (handled separately in calculate_v10)
+            # Skip percentage-based entries (handled separately)
             if entry.get("extra_pct", 0) > 0:
                 continue
-                
+            
             entry_model = entry.get("model", "").lower()
             if entry_model != model_key:
                 continue
             
-            entry_year = entry.get("year", 0)
-            if entry_year != year:
+            if entry.get("year", 0) != year:
                 continue
             
-            # WARIANT MATCHING — Leon strict, inne modele tylko VZ flag
-            entry_variant = entry.get("variant", "").lower()
-            
-            if model_key == "leon":
-                # Leon: strict variant matching (ST, VZ KUDC/KUGC, standard KUD/KUG)
-                if entry_variant == "st":
-                    if title_variant != "st":
-                        continue
-                elif entry_variant in ("vz kudc/kugc",):
-                    if title_variant != "vz":
-                        continue
-                elif entry_variant == "kud/kug":
-                    if title_variant in ("st", "vz"):
-                        continue
-                # Inne entry_variant dla Leona (nieznane) → pomijamy strict check
-            # Inne modele (Formentor, Terramar, Born, Tavascan):
-            # Wariant to kod techniczny (KMP, KMPB0Y, K11, KR1) — NIE dopasowujemy do tytułu
-            # VZ matching odbywa się przez is_vz flag poniżej
+            # VZ matching
+            entry_is_vz = entry.get("is_vz", False)
+            if entry_is_vz and not is_vz:
+                continue  # VZ entry, not VZ car
+            if not entry_is_vz and is_vz:
+                continue  # non-VZ entry, but VZ car
             
             # Fuel matching
             entry_fuel = entry.get("fuel", "all").lower()
             fuel_lower = fuel.lower()
-            
             if entry_fuel != "all":
-                # EV matching
                 if entry_fuel == "elektryk" and fuel_lower not in ("elektryk", "elektryczny", "ev"):
                     continue
                 elif entry_fuel == "phev" and fuel_lower not in ("phev", "plug-in", "plugin", "spalinowo-elektryczny"):
@@ -752,31 +726,19 @@ class MarginCalculator:
                 elif entry_fuel == "benzyna" and fuel_lower in ("elektryk", "ev", "phev", "plug-in"):
                     continue
             
-            # VZ matching
-            entry_is_vz = entry.get("is_vz", False)
-            if entry_is_vz and not is_vz:
-                continue
-            if is_vz and entry_is_vz:
-                # VZ match gets highest priority
-                priority = 10
-            elif not entry_is_vz:
-                priority = 5
-            else:
-                continue
-            
-            # Prefer standardowe over promocyjne
-            if entry.get("type", "") == "standardowe":
-                priority += 2
-            elif entry.get("type", "") == "promocyjne":
-                priority += 1
-            
+            # Leon: IGNORUJ podział na ST vs KUD/KUG — mają te same rabaty
+            # Bierz wszystkie wpisy które pasują modelowo (po is_vz i fuel)
             amount = entry.get("amount", 0)
-            
-            if priority > best_priority or (priority == best_priority and amount > best_rebate):
-                best_rebate = amount
-                best_priority = priority
+            if amount > 0:
+                result_amounts.add(amount)
         
-        return best_rebate
+        return sorted(result_amounts)  # posortowana lista unikalnych kwot
+
+    @staticmethod
+    def get_rebate(year: int, model_raw: str, title: str, fuel: str = "benzyna") -> int:
+        """Kompatybilność wsteczna — zwraca max rabat z get_all_rebates."""
+        amounts = MarginCalculator.get_all_rebates(year, model_raw, title, fuel)
+        return max(amounts) if amounts else 0
 
     @staticmethod
     def calculate(catalog_price: int, sale_price: int, year: int,
@@ -858,17 +820,20 @@ class MarginCalculator:
         base_discount_pct = MARGIN_CFG.get("dealer_base_discount_pct", 6.0) / 100.0
         dealer_cost_base = int(catalog_price * (1.0 - base_discount_pct))
         
-        # ── Find best PLN rebate from importer ──
-        # Dla nie-EV modeli (Leon/Formentor/Terramar): eTSI mHEV może być oznaczony jako
-        # "elektryk" przez Otomoto, ale to łagodna hybryda benzynowa → używamy benzyna do rabatów
+        # ── Find ALL PLN rebates from importer ──
+        # Dla nie-EV modeli: eTSI mHEV może być oznaczony jako "elektryk" przez Otomoto,
+        # ale to łagodna hybryda benzynowa → używamy benzyna do rabatów
         fuel_for_rebate = fuel
         if not is_ev and fuel.lower() in ("elektryk", "elektryczny", "ev", "benzyna_elektryk"):
             fuel_for_rebate = "benzyna"
-        rebate_available = MarginCalculator.get_rebate(year, model_raw, title, fuel_for_rebate)
+        all_rebates = MarginCalculator.get_all_rebates(year, model_raw, title, fuel_for_rebate)
         
-        # Check for rebate mentioned in dealer description
-        if rebate_from_desc > 0:
-            rebate_available = max(rebate_available, rebate_from_desc)
+        # Add rebate from dealer description if any
+        if rebate_from_desc > 0 and rebate_from_desc not in all_rebates:
+            all_rebates.append(rebate_from_desc)
+        
+        # Candidate list: 0 (no rebate) + all available PLN rebates
+        candidate_rebates = [0] + all_rebates
         
         # ── Handle percentage-based rebates (e.g., Tavascan 19%, VZ 24%+18500) ──
         title_lower = title.lower()
@@ -892,41 +857,48 @@ class MarginCalculator:
                 extra_pln_from_pct_entry = entry.get("amount", 0)
                 break
         
-        # ── Calculate total rebate (pick best option) ──
+        # ── Jeśli mamy % rebate (Tavascan/VZ), dodaj jako kandydata ──
         if extra_pct_rebate > 0:
-            # Percentage rebate available (e.g., 19% or 24%+18500)
             pct_total = extra_pct_rebate + extra_pln_from_pct_entry
-            total_rebate = max(rebate_available, pct_total)
-        else:
-            total_rebate = rebate_available
+            if pct_total not in candidate_rebates:
+                candidate_rebates.append(pct_total)
         
-        # ── Step 1: Margin WITHOUT PLN rebate ──
+        # ── Step 1: Margin BEZ rabatu (baseline) ──
         margin_pln_base = sale_price - dealer_cost_base
         margin_pct_base = round((margin_pln_base / sale_price) * 100, 2) if sale_price > 0 else 0.0
         margin_without_rebate = margin_pct_base
         
-        # ── Step 2: Calculate margin WITH rebate (for comparison/display) ──
-        if total_rebate > 0:
-            dealer_cost_with = dealer_cost_base - total_rebate
-            margin_pln_with = sale_price - dealer_cost_with
-            margin_pct_with = round((margin_pln_with / sale_price) * 100, 2) if sale_price > 0 else 0.0
-        else:
-            dealer_cost_with = dealer_cost_base
-            margin_pln_with = margin_pln_base
-            margin_pct_with = margin_pct_base
+        # ── Step 2: Closest-to-0 picker — sprawdź WSZYSTKIE kandydatów (0 + rabaty) ──
+        # Dla każdego rabatu oblicz marżę, wybierz tę z ABS(marża%) najbliżej 0
+        best_rebate = 0
+        best_margin_pct = margin_pct_base
+        best_margin_pln = margin_pln_base
+        best_dealer_cost = dealer_cost_base
         
-        margin_with_rebate = margin_pct_with
+        for r in candidate_rebates:
+            dc = dealer_cost_base - r
+            mp_pln = sale_price - dc
+            mp_pct = round((mp_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            if abs(mp_pct) < abs(best_margin_pct):
+                best_rebate = r
+                best_margin_pct = mp_pct
+                best_margin_pln = mp_pln
+                best_dealer_cost = dc
         
-        # ── Step 3: ZAWSZE stosuj rabat (filar kalkulatora) ──
-        # Formuła: dealer_cost = catalog × 0.94 - rabat_PLN  (zawsze, bez wyjątków)
-        # Jeśli marża wychodzi poza zakres [-1%, 7%] → to są PRAWDZIWE liczby, nie błąd
-        if total_rebate > 0:
-            return (dealer_cost_with, total_rebate, margin_pct_with, margin_pln_with, True,
-                    margin_without_rebate, margin_with_rebate)
+        use_rebate = (best_rebate > 0)
+        
+        # margin_with_rebate: użyj najwyższego dostępnego rabatu (do wyświetlania)
+        max_rebate = max(candidate_rebates) if candidate_rebates else 0
+        if max_rebate > 0:
+            dc_with = dealer_cost_base - max_rebate
+            margin_pln_with = sale_price - dc_with
+            margin_with_rebate = round((margin_pln_with / sale_price) * 100, 2) if sale_price > 0 else 0.0
         else:
-            # Brak rabatu w bazie — dealer_cost = catalog × 0.94 (bez korekty)
-            return (dealer_cost_base, 0, margin_pct_base, margin_pln_base, False,
-                    margin_without_rebate, margin_without_rebate)
+            margin_with_rebate = margin_pct_base
+        
+        return (best_dealer_cost, best_rebate,
+                best_margin_pct, best_margin_pln, use_rebate,
+                margin_without_rebate, margin_with_rebate)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
