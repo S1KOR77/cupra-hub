@@ -111,7 +111,7 @@ DEALERS = [
     {"name": "PLICHTA",              "url": "https://cupra-plichta.otomoto.pl/inventory"},
     {"name": "SZCZECIN",             "url": "https://cupraseat-szczecin.otomoto.pl/inventory"},
     {"name": "OLSZTYN",              "url": "https://cupra-olsztyn.otomoto.pl/inventory"},
-    {"name": "CUPRA.OTOMOTO",        "url": "https://cupra.otomoto.pl/inventory"},
+    {"name": "PLICHTA BYDGOSZCZ",    "url": "https://cupra.otomoto.pl/inventory"},
     {"name": "TORUŃ",                "url": "https://cupra-torun.otomoto.pl/inventory"},
     {"name": "BIACOMEX",             "url": "https://biacomexcupra.otomoto.pl/inventory"},
     {"name": "POL-CAR",              "url": "https://cupra-pol-car.otomoto.pl/inventory"},
@@ -121,7 +121,7 @@ DEALERS = [
     {"name": "KROTOSKI",             "url": "https://cupra-krotoski.otomoto.pl/inventory"},
     {"name": "GCZ WARSZAWA",         "url": "https://gcz-cupra-warszawa.otomoto.pl/inventory"},
     {"name": "WARSZAWA",             "url": "https://cupra-warszawa.otomoto.pl/inventory"},
-    {"name": "CUPRA POLSKA",         "url": "https://cuprapolska.otomoto.pl/inventory"},
+    {"name": "ŚWITOŃ-PACZKOWSKI",    "url": "https://cuprapolska.otomoto.pl/inventory"},
     {"name": "STUDIO ŁÓDŹ",          "url": "https://cuprastudiolodz.otomoto.pl/inventory"},
     {"name": "STUDIO",               "url": "https://cupra-studio.otomoto.pl/inventory"},
     {"name": "LUBIN",                "url": "https://cupralubin.otomoto.pl/inventory"},
@@ -985,19 +985,16 @@ class OfferParser:
         Wykryj typ pojazdu na podstawie tytułu, opisu i parametru new/used.
         Returns: (vehicle_type, is_demo)
         """
-        full_text = f"{title} {description}".lower()
-        # USED_KEYWORDS: sprawdzaj TYLKO w tytule i pierwszych 500 znakach opisu
-        # Unikamy false-positive z boilerplate na końcu opisu (np. "auta używanego" = odkup)
-        short_text = f"{title} {description[:500]}".lower()
+        search_text = f"{title} {description}".lower()
 
-        # Sprawdź słowa demo/ekspozycyjne (pełny opis - demo może być gdziekolwiek)
+        # Sprawdź słowa demo/ekspozycyjne
         for keyword in self.DEMO_KEYWORDS:
-            if keyword in full_text:
+            if keyword in search_text:
                 return "demo", True
 
-        # Sprawdź słowa używane (tylko tytuł + początek opisu)
+        # Sprawdź słowa używane
         for keyword in self.USED_KEYWORDS:
-            if keyword in short_text:
+            if keyword in search_text:
                 return "used", False
 
         # Parametr Otomoto: is_new=False → używane
@@ -1801,16 +1798,13 @@ class GoliathEngine:
                 all_links.append((link, dealer["name"]))
             logging.info(f"  🏢 [{i:>2}/{len(DEALERS)}] {dealer['name']:<25} → {len(links)} ofert")
 
-        # Deduplikacja — priorytet: kolejność w liście DEALERS (Motorpol Wrocław = pierwsze)
+        # Deduplikacja
         seen_urls: Set[str] = set()
         unique_links: List[Tuple[str, str]] = []
         for url, name in all_links:
             if url not in seen_urls:
                 seen_urls.add(url)
                 unique_links.append((url, name))
-
-        # Mapa URL → aktualny dealer (używana w FAZIE 4 przy merge z cache)
-        url_to_current_dealer: Dict[str, str] = {url: name for url, name in unique_links}
 
         total_found = len(unique_links)
         self.stats["links_found"] = total_found
@@ -1834,23 +1828,13 @@ class GoliathEngine:
         links_to_scan: List[Tuple[str, str]] = []
         cached_cars: List[CarData] = []
 
-        # Wczytaj aktualne URL-e z data.json (dla sprawdzenia dostępności w cache)
-        existing_data_urls: Set[str] = set()
-        if os.path.exists(Config.OUTPUT_JSON):
-            try:
-                with open(Config.OUTPUT_JSON, "r", encoding="utf-8") as f:
-                    _tmp_data = json.load(f)
-                _tmp_items = _tmp_data if isinstance(_tmp_data, list) else _tmp_data.get("cars", [])
-                existing_data_urls = set(item.get("url", "") for item in _tmp_items)
-            except Exception:
-                pass
-
         for url, dealer_name in unique_links:
-            if self.memory.should_skip(url) and url in existing_data_urls:
-                # W cache i w data.json → bezpiecznie pomiń, merge w FAZIE 4
+            if self.memory.should_skip(url):
                 self.stats["links_skipped_cache"] += 1
+                # Reconstruct from cache for export
+                entry = self.memory.cache[url]
+                # We'll re-add cached data from previous export
             else:
-                # Brak w cache LUB brak w data.json → skanuj świeżo
                 links_to_scan.append((url, dealer_name))
 
         skipped = self.stats["links_skipped_cache"]
@@ -1924,12 +1908,10 @@ class GoliathEngine:
                     url = item.get("url", "")
                     if url and url not in new_urls and self.memory.should_skip(url):
                         # Reconstruct CarData from JSON
-                        # Użyj aktualnego dealera (z bieżącego skanowania), nie starego z data.json
-                        current_dealer = url_to_current_dealer.get(url, item.get("dealer_short", ""))
                         cached_car = CarData(
                             otomoto_id=item.get("otomoto_id", ""),
-                            dealer=current_dealer,
-                            dealer_short=current_dealer,
+                            dealer=item.get("dealer", ""),
+                            dealer_short=item.get("dealer_short", ""),
                             title=item.get("title", ""),
                             model=item.get("model", ""),
                             model_raw=item.get("model_raw", ""),
@@ -1966,8 +1948,6 @@ class GoliathEngine:
                             first_seen=item.get("first_seen", ""),
                             price_changed=False,
                         )
-                        # Zaktualizuj is_home na podstawie aktualnego dealera
-                        cached_car.is_home = (cached_car.dealer_short == HOME_DEALER)
                         # Only add if still active on Otomoto
                         if url in active_urls:
                             # 🔧 KRYTYCZNE: Przelicz marżę z AKTUALNYCH ustawień!
@@ -2033,38 +2013,16 @@ class GoliathEngine:
                     if "note" in ov:
                         car.note = ov["note"]
                     if changed and car.has_catalog_price and car.sale_price > 0:
-                        manual_dc = ov.get("dealer_cost")
-                        manual_discount = ov.get("discount")
+                        fuel_ov = car.fuel or "benzyna"
                         try:
-                            if manual_dc and manual_dc > 0:
-                                # Ręczny koszt dealera — użyj bezpośrednio
-                                car.dealer_cost = manual_dc
-                                car.rebate = manual_discount or 0
-                                car.rebate_applied = car.rebate > 0
-                                car.margin_pln = car.sale_price - car.dealer_cost
-                                car.margin_pct = round((car.margin_pln / car.sale_price) * 100, 2) if car.sale_price > 0 else 0.0
-                                car.margin_without_rebate_pct = car.margin_pct
-                                car.margin_with_rebate_pct = car.margin_pct
-                            elif manual_discount is not None and manual_discount > 0:
-                                # Ręczny rabat — przelicz koszt dealera na jego podstawie
-                                car.rebate = manual_discount
-                                car.rebate_applied = True
-                                car.dealer_cost = round(car.catalog_price * 0.94 - car.rebate)
-                                car.margin_pln = car.sale_price - car.dealer_cost
-                                car.margin_pct = round((car.margin_pln / car.sale_price) * 100, 2) if car.sale_price > 0 else 0.0
-                                car.margin_without_rebate_pct = car.margin_pct
-                                car.margin_with_rebate_pct = car.margin_pct
-                            else:
-                                # Brak ręcznych wartości — standardowe przeliczenie
-                                fuel_ov = car.fuel or "benzyna"
-                                (car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln,
-                                 car.rebate_applied, car.margin_without_rebate_pct, car.margin_with_rebate_pct) = (
-                                    MarginCalculator.calculate_v10(
-                                        car.catalog_price, car.sale_price, car.year,
-                                        car.model_raw, car.title, car.description,
-                                        fuel_override=fuel_ov
-                                    )
+                            (car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln,
+                             car.rebate_applied, car.margin_without_rebate_pct, car.margin_with_rebate_pct) = (
+                                MarginCalculator.calculate_v10(
+                                    car.catalog_price, car.sale_price, car.year,
+                                    car.model_raw, car.title, car.description,
+                                    fuel_override=fuel_ov
                                 )
+                            )
                             if car.vehicle_type == "demo":
                                 car.status = "DEMO"
                             elif car.vehicle_type == "used":
