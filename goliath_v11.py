@@ -138,6 +138,67 @@ DEALERS = [
     {"name": "AUTO GAZDA",           "url": "https://cupraautogazda.otomoto.pl/inventory"},
 ]
 
+# ── v16: Global search URL ──────────────────────────────────────────────────
+GLOBAL_CUPRA_URL = "https://www.otomoto.pl/osobowe/cupra"
+
+# ── v16: Subdomain → dealer_short mapping (from DEALERS URLs) ───────────────
+import re as _re
+DEALER_DOMAINS: Dict[str, str] = {}
+for _d in DEALERS:
+    _m = _re.match(r'https://([^.]+)\.otomoto\.pl', _d['url'])
+    if _m:
+        DEALER_DOMAINS[_m.group(1)] = _d['name']
+
+# ── v16: Keyword fallback matching (seller.name → dealer_short) ─────────────
+# Ordered: most specific first to avoid false positives
+DEALER_NAME_KEYWORDS = [
+    ("motorpol wrocław",   "MOTORPOL WROCŁAW"),
+    ("motorpol",           "MOTORPOL WROCŁAW"),
+    ("plichta gdynia",     "PLICHTA GDYNIA"),
+    ("plichta gdańsk",     "PLICHTA GDAŃSK"),
+    ("plichta bydgoszcz",  "PLICHTA BYDGOSZCZ"),
+    ("biacomex",           "BIACOMEX"),
+    ("pol-car",            "POL-CAR"),
+    ("gcz poznań",         "GCZ POZNAŃ"),
+    ("gcz poznan",         "GCZ POZNAŃ"),
+    ("carsed",             "CARSED"),
+    ("warszawa centrum",   "WARSZAWA CENTRUM"),
+    ("krotoski",           "KROTOSKI"),
+    ("gcz warszawa",       "GCZ WARSZAWA"),
+    ("świtoń",             "ŚWITOŃ-PACZKOWSKI"),
+    ("switon",             "ŚWITOŃ-PACZKOWSKI"),
+    ("paczkowski",         "ŚWITOŃ-PACZKOWSKI"),
+    ("studio łódź",        "STUDIO ŁÓDŹ"),
+    ("studio lodz",        "STUDIO ŁÓDŹ"),
+    ("studio kraków",      "STUDIO KRAKÓW"),
+    ("studio krakow",      "STUDIO KRAKÓW"),
+    ("lellek opole",       "LELLEK OPOLE"),
+    ("lellek gliwice",     "LELLEK GLIWICE"),
+    ("pro-moto",           "PRO-MOTO"),
+    ("gg auto",            "GG AUTO RZESZÓW"),
+    ("gazda",              "AUTO GAZDA"),
+    ("dynamica",           "DYNAMICA"),
+    ("lubin",              "LUBIN"),
+    ("częstochowa",        "CZĘSTOCHOWA"),
+    ("czestochowa",        "CZĘSTOCHOWA"),
+    ("kielce",             "KIELCE"),
+    ("olsztyn",            "OLSZTYN"),
+    ("szczecin",           "SZCZECIN"),
+    ("toruń",              "TORUŃ"),
+    ("torun",              "TORUŃ"),
+    ("rzeszów",            "GG AUTO RZESZÓW"),
+    ("rzeszow",            "GG AUTO RZESZÓW"),
+    ("opole",              "LELLEK OPOLE"),
+    ("gliwice",            "LELLEK GLIWICE"),
+    ("bydgoszcz",          "PLICHTA BYDGOSZCZ"),
+    ("kraków",             "KRAKÓW"),
+    ("krakow",             "KRAKÓW"),
+    # Most ambiguous — last resort
+    ("warszawa",           "WARSZAWA"),
+    ("plichta",            "PLICHTA"),
+    ("studio",             "STUDIO"),
+]
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  💰  TABELA RABATÓW IMPORTERA
@@ -523,6 +584,88 @@ class InventoryCollector:
         except Exception as e:
             logging.debug(f"    ⚠️ JSON extraction error: {e}")
             return [], 0
+
+    def collect_global(self) -> Set[str]:
+        """
+        v16 NUCLEAR: Globalne wyszukiwanie WSZYSTKICH Cupr na Otomoto.pl.
+        Skanuje otomoto.pl/osobowe/cupra stronicami aż do końca.
+        Dealer matching odbywa się później w parse() na podstawie seller info.
+        Gwarantuje: żadne auto z sieci nie zostanie pominięte.
+        """
+        all_links: Set[str] = set()
+        total_ads = None
+        expected_pages = 100
+        ADS_PER_PAGE = 32
+        consecutive_failures = 0
+
+        logging.info(f"  🌐 GLOBAL SCAN: otomoto.pl/osobowe/cupra — szukam wszystkich Cupr")
+
+        for page in range(1, 500):
+            url = f"{GLOBAL_CUPRA_URL}?page={page}" if page > 1 else GLOBAL_CUPRA_URL
+            html = self.client.get(url)
+
+            if not html:
+                consecutive_failures += 1
+                logging.warning(f"    🔴 Global str.{page}: BRAK HTML [{consecutive_failures}/3]")
+                if consecutive_failures >= 3:
+                    logging.warning(f"    ⛔ Global search: 3 faile z rzędu — przerywam")
+                    break
+                continue
+
+            consecutive_failures = 0
+            ads, total = self._extract_ads_from_json(html)
+
+            if total and total > 0 and total_ads is None:
+                total_ads = total
+                expected_pages = math.ceil(total / ADS_PER_PAGE)
+                logging.info(f"    📊 Global: {total} ogłoszeń Cupra, szacowane stron: {expected_pages}")
+
+            page_links = set()
+            if ads:
+                for ad in ads:
+                    ad_url = ad.get('url', '')
+                    if ad_url and '/oferta/' in ad_url:
+                        page_links.add(ad_url)
+
+            # BS4 fallback
+            if len(page_links) < 3:
+                try:
+                    soup = BeautifulSoup(html, 'html.parser')
+                    for a in soup.find_all('a', href=True):
+                        href = a['href'].strip()
+                        if '/oferta/' in href and 'cupra' in href.lower():
+                            page_links.add(href)
+                except Exception:
+                    pass
+
+            # Filtruj non-Cupra
+            filtered = set()
+            for link in page_links:
+                ll = link.lower()
+                if 'ateca' in ll:
+                    continue
+                if '/oferta/seat-' in ll and 'cupra' not in ll:
+                    continue
+                filtered.add(link.rstrip('\\'))
+
+            new_links = filtered - all_links
+            all_links.update(new_links)
+
+            if new_links:
+                logging.info(f"    📄 Global str.{page:>3}: +{len(new_links):>4}  (razem: {len(all_links)})")
+
+            # Stop: przeskanowano wszystkie strony wg total
+            if total_ads and page >= expected_pages:
+                logging.info(f"  ✅ Global: wszystkie {expected_pages} stron przeskanowane ({len(all_links)} linków)")
+                break
+
+            # Stop: pusta strona
+            if not ads and not page_links:
+                logging.info(f"  ✅ Global: pusta strona {page} — koniec")
+                break
+
+        logging.info(f"  🌐 Global: {len(all_links)} unikalnych linków Cupra znalezione\n")
+        return all_links
 
     def collect(self, dealer_url: str) -> Set[str]:
         """
@@ -1227,7 +1370,35 @@ class OfferParser:
 
         # ── Seller ──
         seller = ad.get("seller", {})
-        dealer_full = seller.get("name", dealer_short)
+        dealer_full = seller.get("name", dealer_short) or dealer_short
+
+        # ── v16: Dealer matching dla linków z global search (dealer_short="") ──
+        if not dealer_short:
+            matched = ""
+
+            # Priorytet 1: dopasowanie przez URL subdomeny dealera (najpewniejsze)
+            seller_url = (seller.get("url", "") or seller.get("siteUrl", "") or
+                          seller.get("subdomain", "") or "").lower()
+            for domain, dname in DEALER_DOMAINS.items():
+                if domain in seller_url:
+                    matched = dname
+                    break
+
+            # Priorytet 2: dopasowanie przez nazwę sprzedawcy (keyword matching)
+            if not matched and dealer_full:
+                seller_lower = dealer_full.lower()
+                for keyword, dname in DEALER_NAME_KEYWORDS:
+                    if keyword in seller_lower:
+                        matched = dname
+                        break
+
+            if matched:
+                dealer_short = matched
+                logging.debug(f"  🔗 Global→matched: {dealer_full!r} → {dealer_short}")
+            else:
+                # Nie z naszej sieci — pomijamy
+                logging.debug(f"  ⚠ Global→unknown dealer: {dealer_full!r} ({seller_url}) — pomijam")
+                return None
 
         # ── Otomoto ID ──
         otomoto_id = str(ad.get("id", ""))
@@ -1835,32 +2006,49 @@ class GoliathEngine:
         logging.info("🚀 GOLIATH v9.0 ULTRA startuje!\n")
 
         # ═════════════════════════════════════════════
-        #  FAZA 1: Zbieranie linków z inventory
+        #  FAZA 1: Zbieranie linków — v16 NUCLEAR (Global + Per-dealer)
         # ═════════════════════════════════════════════
         logging.info(f"{'═' * 60}")
-        logging.info(f"  📡  FAZA 1: Skanowanie {len(DEALERS)} salonów")
+        logging.info(f"  📡  FAZA 1 v16 NUCLEAR: Global search + {len(DEALERS)} salonów")
         logging.info(f"{'═' * 60}\n")
 
-        all_links: List[Tuple[str, str]] = []
-
+        # ── 1A: Per-dealer scan (dealer name znany dokładnie) ──────────────────
+        url_to_dealer: Dict[str, str] = {}
         for i, dealer in enumerate(DEALERS, 1):
             self.stats["dealers_scanned"] += 1
             links = self.collector.collect(dealer["url"])
+            count_new = 0
             for link in links:
-                all_links.append((link, dealer["name"]))
+                if link not in url_to_dealer:
+                    count_new += 1
+                url_to_dealer[link] = dealer["name"]  # Per-dealer zawsze nadpisuje
             logging.info(f"  🏢 [{i:>2}/{len(DEALERS)}] {dealer['name']:<25} → {len(links)} ofert")
 
-        # Deduplikacja
+        logging.info(f"\n  📊 Per-dealer: {len(url_to_dealer)} unikalnych linków\n")
+
+        # ── 1B: Global search (pełne Otomoto) ─────────────────────────────────
+        global_links = self.collector.collect_global()
+        global_only_count = sum(1 for l in global_links if l not in url_to_dealer)
+        logging.info(f"  📊 Global: {len(global_links)} linków, w tym {global_only_count} nowych (nie w per-dealer)\n")
+
+        # ── Merge: per-dealer ma priorytet, global dodaje resztę ──────────────
         seen_urls: Set[str] = set()
         unique_links: List[Tuple[str, str]] = []
-        for url, name in all_links:
+
+        # Najpierw per-dealer (dealer_short znany)
+        for url, dealer_name in url_to_dealer.items():
+            seen_urls.add(url)
+            unique_links.append((url, dealer_name))
+
+        # Potem global-only (dealer_short="" → zostanie wyciągnięty z ogłoszenia)
+        for url in global_links:
             if url not in seen_urls:
                 seen_urls.add(url)
-                unique_links.append((url, name))
+                unique_links.append((url, ""))  # "" = do ustalenia w parse()
 
         total_found = len(unique_links)
         self.stats["links_found"] = total_found
-        logging.info(f"\n  📊 Łącznie: {len(all_links)} linków → {total_found} unikalnych ofert\n")
+        logging.info(f"  📊 ŁĄCZNIE: {total_found} unikalnych ofert do analizy\n")
 
         # ═════════════════════════════════════════════
         #  FAZA 2: Smart Memory Filter
