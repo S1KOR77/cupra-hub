@@ -1798,13 +1798,16 @@ class GoliathEngine:
                 all_links.append((link, dealer["name"]))
             logging.info(f"  🏢 [{i:>2}/{len(DEALERS)}] {dealer['name']:<25} → {len(links)} ofert")
 
-        # Deduplikacja
+        # Deduplikacja — priorytet: kolejność w liście DEALERS (Motorpol Wrocław = pierwsze)
         seen_urls: Set[str] = set()
         unique_links: List[Tuple[str, str]] = []
         for url, name in all_links:
             if url not in seen_urls:
                 seen_urls.add(url)
                 unique_links.append((url, name))
+
+        # Mapa URL → aktualny dealer (używana w FAZIE 4 przy merge z cache)
+        url_to_current_dealer: Dict[str, str] = {url: name for url, name in unique_links}
 
         total_found = len(unique_links)
         self.stats["links_found"] = total_found
@@ -1828,13 +1831,23 @@ class GoliathEngine:
         links_to_scan: List[Tuple[str, str]] = []
         cached_cars: List[CarData] = []
 
+        # Wczytaj aktualne URL-e z data.json (dla sprawdzenia dostępności w cache)
+        existing_data_urls: Set[str] = set()
+        if os.path.exists(Config.OUTPUT_JSON):
+            try:
+                with open(Config.OUTPUT_JSON, "r", encoding="utf-8") as f:
+                    _tmp_data = json.load(f)
+                _tmp_items = _tmp_data if isinstance(_tmp_data, list) else _tmp_data.get("cars", [])
+                existing_data_urls = set(item.get("url", "") for item in _tmp_items)
+            except Exception:
+                pass
+
         for url, dealer_name in unique_links:
-            if self.memory.should_skip(url):
+            if self.memory.should_skip(url) and url in existing_data_urls:
+                # W cache i w data.json → bezpiecznie pomiń, merge w FAZIE 4
                 self.stats["links_skipped_cache"] += 1
-                # Reconstruct from cache for export
-                entry = self.memory.cache[url]
-                # We'll re-add cached data from previous export
             else:
+                # Brak w cache LUB brak w data.json → skanuj świeżo
                 links_to_scan.append((url, dealer_name))
 
         skipped = self.stats["links_skipped_cache"]
@@ -1908,10 +1921,12 @@ class GoliathEngine:
                     url = item.get("url", "")
                     if url and url not in new_urls and self.memory.should_skip(url):
                         # Reconstruct CarData from JSON
+                        # Użyj aktualnego dealera (z bieżącego skanowania), nie starego z data.json
+                        current_dealer = url_to_current_dealer.get(url, item.get("dealer_short", ""))
                         cached_car = CarData(
                             otomoto_id=item.get("otomoto_id", ""),
-                            dealer=item.get("dealer", ""),
-                            dealer_short=item.get("dealer_short", ""),
+                            dealer=current_dealer,
+                            dealer_short=current_dealer,
                             title=item.get("title", ""),
                             model=item.get("model", ""),
                             model_raw=item.get("model_raw", ""),
@@ -1948,6 +1963,8 @@ class GoliathEngine:
                             first_seen=item.get("first_seen", ""),
                             price_changed=False,
                         )
+                        # Zaktualizuj is_home na podstawie aktualnego dealera
+                        cached_car.is_home = (cached_car.dealer_short == HOME_DEALER)
                         # Only add if still active on Otomoto
                         if url in active_urls:
                             # 🔧 KRYTYCZNE: Przelicz marżę z AKTUALNYCH ustawień!
