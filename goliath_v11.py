@@ -526,13 +526,21 @@ class InventoryCollector:
     def collect(self, dealer_url: str) -> Set[str]:
         all_links: Set[str] = set()
         base_url = dealer_url.split("?")[0]
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 3  # Break only after 3 failed pages in a row
 
         for page in range(1, Config.MAX_PAGES_PER_DEALER + 1):
             url = f"{base_url}?page={page}" if page > 1 else base_url
             html = self.client.get(url)
             if not html:
-                logging.debug(f"    🔴 Strona {page}: BRAK HTML (timeout/block)")
-                break
+                consecutive_failures += 1
+                logging.warning(f"    🔴 Strona {page}: BRAK HTML (timeout/block) [{consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}]")
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    logging.warning(f"    ⛔ {MAX_CONSECUTIVE_FAILURES} kolejne faile — przerywam dealera")
+                    break
+                continue
+
+            consecutive_failures = 0  # Reset on successful page load
 
             # 🔧 v13: Multi-strategy link extraction
             ads, total = self._extract_ads_from_json(html)
