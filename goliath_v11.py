@@ -961,12 +961,23 @@ class OfferParser:
     #   "Cena katalogowa: 240 661,00 zł"
     #   "cena cennikowa 153.900 PLN"
     #   "katlogowa: 153 900 zł" (typo)
+    #   "Cena nowego pojazdu: 153 900"
+    #   "Cena detaliczna: 153 900"
+    #   "Wartość pojazdu: 153 900"
+    #   "Cena MSRP: 153 900"
+    #   "Cena bazowa: 153 900"
     CATALOG_PRICE_RE = re.compile(
-        r'(?:cena\s+katalogowa|cena\s+cennikowa|cena\s+z\s+cennika|'
+        r'(?:'
+        r'cena\s+katalogowa|cena\s+cennikowa|cena\s+z\s+cennika|'
         r'cena\s+konfiguracji|'                    # CARSED format
-        r'warto[śs][ćc]\s+katalogowa|cena\s+przed\s+rabatem|'
-        r'cena\s+regularna|cena\s+standardowa|'
-        r'katalogowa|cennikowa|katlogowa)'       # Keyword
+        r'warto[śs][ćc]\s+katalogowa|warto[śs][ćc]\s+pojazdu|'
+        r'cena\s+przed\s+rabatem(?:\s+dealera)?|'
+        r'cena\s+regularna|cena\s+standardowa|cena\s+detaliczna|'
+        r'cena\s+nowego\s+pojazdu|cena\s+pojazdu\s+nowego|'
+        r'cena\s+bazowa|cena\s+wyj[śs]ciowa|cena\s+msrp|'
+        r'cena\s+wg\.?\s*cennika|wg\.?\s*cennika|'
+        r'katalogowa|cennikowa|katlogowa'          # Keyword standalone
+        r')'
         r'[^0-9]{0,30}?'                         # Max 30 non-digit chars
         r'([\d][\d\s.,]{3,})',                    # Price digits
         re.I
@@ -1391,15 +1402,18 @@ class Exporter:
 
     @staticmethod
     def to_json(cars: List[CarData], filepath: str):
+        # Filtruj TYLKO faktycznie używane auta — BRAK_CENY_KAT to nowe auta bez dopasowania cennika
         cars_for_export = [
             car for car in cars 
-            if car.status not in ("UŻYWANE", "BRAK_CENY_KAT") and car.vehicle_type != "used"
+            if car.status != "UŻYWANE" and car.vehicle_type != "used"
         ]
+        used_count = len(cars) - len(cars_for_export)
+        brak_kat = sum(1 for c in cars_for_export if c.status == "BRAK_CENY_KAT")
         # Export as clean array (dashboard expects list, not object)
         cars_data = [car.to_dict() for car in cars_for_export]
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(cars_data, f, ensure_ascii=False, indent=2)
-        logging.info(f"  JSON -> {filepath} ({len(cars_for_export)} rekordow)")
+        logging.info(f"  JSON -> {filepath} ({len(cars_for_export)} rekordow, filtr: {used_count} używanych, w tym {brak_kat} bez ceny kat.)")
 
     @staticmethod
     def to_xlsx(cars: List[CarData], filepath: str):
