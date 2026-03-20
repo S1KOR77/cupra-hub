@@ -31,6 +31,7 @@
 
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -524,10 +525,19 @@ class InventoryCollector:
             return [], 0
 
     def collect(self, dealer_url: str) -> Set[str]:
+        """
+        v14: Total-based pagination — ALWAYS scans all pages.
+        Uses 'total' from JSON to calculate expected page count.
+        Never breaks early just because one page had no Cupra cars.
+        """
         all_links: Set[str] = set()
         base_url = dealer_url.split("?")[0]
         consecutive_failures = 0
-        MAX_CONSECUTIVE_FAILURES = 3  # Break only after 3 failed pages in a row
+        MAX_CONSECUTIVE_FAILURES = 3
+        expected_pages = Config.MAX_PAGES_PER_DEALER  # Default, updated from JSON
+        total_ads = None
+        ADS_PER_PAGE = 30  # Otomoto standard
+        empty_pages = 0  # Pages with 0 ads at all (not just 0 Cupra)
 
         for page in range(1, Config.MAX_PAGES_PER_DEALER + 1):
             url = f"{base_url}?page={page}" if page > 1 else base_url
@@ -540,20 +550,29 @@ class InventoryCollector:
                     break
                 continue
 
-            consecutive_failures = 0  # Reset on successful page load
+            consecutive_failures = 0  # Reset on success
 
-            # 🔧 v13: Multi-strategy link extraction
+            # 🔧 v14: Multi-strategy link extraction
             ads, total = self._extract_ads_from_json(html)
-            
+
+            # Calculate expected pages from total (first page that has it)
+            if total and total > 0 and total_ads is None:
+                total_ads = total
+                expected_pages = math.ceil(total / ADS_PER_PAGE)
+                logging.info(f"    📊 Total ogłoszeń: {total}, oczekiwane strony: {expected_pages}")
+
             page_links = set()
-            
+
             if ads:
                 for ad in ads:
                     ad_url = ad.get('url', '')
                     if ad_url and '/oferta/' in ad_url:
                         page_links.add(ad_url)
-                logging.debug(f"    📄 Strona {page}: JSON → {len(page_links)} linków (total w systemie: {total})")
-            
+                logging.debug(f"    📄 Strona {page}: JSON → {len(page_links)} linków (total={total})")
+            else:
+                # No ads at all from JSON — might be truly empty page
+                empty_pages += 1
+
             # Fallback 1: BeautifulSoup (always run if JSON gave few results)
             if len(page_links) < 3:
                 try:
@@ -566,7 +585,7 @@ class InventoryCollector:
                         logging.debug(f"    📄 Strona {page}: BS4 fallback → {len(page_links)} linków")
                 except Exception as e:
                     logging.debug(f"    ⚠️ BS4 fallback error: {e}")
-            
+
             # Fallback 2: Regex on raw HTML (last resort)
             if len(page_links) < 3:
                 regex_links = self.OFFER_LINK_RE.findall(html)
@@ -576,7 +595,7 @@ class InventoryCollector:
                 if regex_links:
                     logging.debug(f"    📄 Strona {page}: Regex fallback → {len(page_links)} linków")
 
-            # Pre-filter na poziomie URL
+            # Pre-filter na poziomie URL (remove non-Cupra Seats and Ateca)
             filtered = set()
             for link in page_links:
                 link_lower = link.lower()
@@ -588,19 +607,30 @@ class InventoryCollector:
                 filtered.add(link)
 
             new_links = filtered - all_links
-            logging.debug(f"    🔍 Po filtrach = {len(filtered)}, Nowych = {len(new_links)}")
-            
-            if not new_links:
-                logging.info(f"    ✅ Strona {page}: Brak nowych - koniec skanowania")
-                break
+            logging.debug(f"    🔍 Str {page}: wszystkich={len(page_links)}, Cupra={len(filtered)}, nowych={len(new_links)}")
 
             all_links.update(new_links)
 
-            if page > 1:
-                logging.info(f"    📄 Strona {page}: +{len(new_links)} nowych")
+            if page > 1 and new_links:
+                logging.info(f"    📄 Strona {page}: +{len(new_links)} nowych Cupra")
 
-        if all_links:
-            logging.debug(f"    ✔️ Razem z dealera: {len(all_links)} linków")
+            # === STOP CONDITIONS (v14: total-based) ===
+            # 1. We've reached the expected number of pages from JSON total
+            if total_ads and page >= expected_pages:
+                logging.info(f"    ✅ Strona {page}/{expected_pages}: Wszystkie strony przeskanowane")
+                break
+
+            # 2. Page returned 0 ads total (truly beyond last page)
+            if not ads and not page_links:
+                logging.info(f"    ✅ Strona {page}: Pusta strona — koniec dealera")
+                break
+
+            # 3. Safety: 2 consecutive truly empty pages (no ads at all)
+            if empty_pages >= 2:
+                logging.info(f"    ✅ 2 puste strony z rzędu — koniec dealera")
+                break
+
+        logging.info(f"    ✔️ Razem Cupra z dealera: {len(all_links)} linków")
         return all_links
 
 
