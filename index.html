@@ -604,6 +604,7 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
         <div class="nav-link" data-section="trendy">Trendy</div>
         <div class="nav-link" data-section="rabaty">Rabaty</div>
         <div class="nav-link" data-section="excel">Excel</div>
+        <div class="nav-link" data-section="anomalie" id="navAnomalie">⚠ Anomalie</div>
     </div>
     <div class="nav-right">
         <div class="theme-dots">
@@ -869,6 +870,17 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
     </div>
 </div>
 
+<!-- ============ ANOMALIE ============ -->
+<div class="section" id="sec-anomalie">
+    <div class="section-header"><span>&#9670;</span> Anomalie &mdash; pojazdy do weryfikacji</div>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:16px;">
+        Pojazdy z anomali&#261; marginy s&#261; wykluczone ze statystyk. Uzupe&#322;nij dane, przelicz mar&#380;&#281; i zatwierd&#378;, aby wróci&#322;y do magazynu.
+    </p>
+    <div id="anomalieContent">
+        <div style="color:var(--text-muted);text-align:center;padding:40px;">&#9203; Ładowanie anomalii...</div>
+    </div>
+</div>
+
 </div><!-- /main -->
 
 <script>
@@ -920,6 +932,200 @@ function applyTheme(name) {
 
 document.querySelectorAll('.theme-dot').forEach(d => d.addEventListener('click', () => applyTheme(d.dataset.theme)));
 
+/* ============================================================
+   ANOMALIE — zarządzanie pojazdami z anomalią marży
+   ============================================================ */
+
+function buildAnomalie() {
+    const anomalies = DATA.filter(v => v.status === 'ANOMALIA' && !v._anomaly_resolved);
+    const container = document.getElementById('anomalieContent');
+    if (!container) return;
+
+    // Update nav badge
+    const navLink = document.getElementById('navAnomalie');
+    if (navLink) {
+        navLink.innerHTML = anomalies.length > 0
+            ? `⚠ Anomalie <span style="background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;margin-left:4px;">${anomalies.length}</span>`
+            : '✓ Anomalie';
+    }
+
+    if (anomalies.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+                <div style="font-size:3rem;margin-bottom:16px;">✅</div>
+                <div style="font-size:1.2rem;font-weight:600;color:var(--text-primary);">Brak anomalii!</div>
+                <div style="margin-top:8px;">Wszystkie pojazdy mają poprawnie wyliczoną marżę.</div>
+            </div>`;
+        return;
+    }
+
+    let html = `
+        <div style="margin-bottom:16px;color:var(--text-muted);font-size:0.85rem;">
+            Znaleziono <strong style="color:var(--red)">${anomalies.length}</strong> pojazdów z anomalią.
+            Uzupełnij brakujące lub niepoprawne dane i kliknij <strong>Zatwierdź → Magazyn</strong>.
+        </div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+            <thead>
+                <tr style="background:var(--bg-card);border-bottom:2px solid var(--accent-border);">
+                    <th style="padding:10px 8px;text-align:left;color:var(--text-muted);">Model</th>
+                    <th style="padding:10px 8px;text-align:left;color:var(--text-muted);">Salon</th>
+                    <th style="padding:10px 8px;text-align:left;color:var(--text-muted);">VIN / ID</th>
+                    <th style="padding:10px 8px;text-align:right;color:var(--text-muted);">Cena Kat.</th>
+                    <th style="padding:10px 8px;text-align:right;color:var(--text-muted);">Koszt Dealera</th>
+                    <th style="padding:10px 8px;text-align:right;color:var(--text-muted);">Rabat</th>
+                    <th style="padding:10px 8px;text-align:right;color:var(--text-muted);">Cena Sprzedaży</th>
+                    <th style="padding:10px 8px;text-align:right;color:var(--text-muted);">Marża %</th>
+                    <th style="padding:10px 8px;text-align:center;color:var(--text-muted);">Akcja</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+    anomalies.forEach((v, idx) => {
+        const ov = getEdited(v.otomoto_id) || {};
+        const sp = ov.sale_price != null ? ov.sale_price : (v.sale_price || '');
+        const cp = ov.catalog_price != null ? ov.catalog_price : (v.catalog_price || '');
+        const rebate = ov.discount != null ? ov.discount : (v.rebate || 0);
+        const dc = ov.dealer_cost != null ? ov.dealer_cost : (v.dealer_cost || '');
+        const id = String(v.otomoto_id);
+
+        html += `
+            <tr id="anom-row-${idx}" style="border-bottom:1px solid var(--accent-border);background:var(--bg-card);">
+                <td style="padding:8px;">${v.model || '-'} ${v.year || ''}</td>
+                <td style="padding:8px;font-size:0.78rem;">${v.dealer_short || v.dealer || '-'}</td>
+                <td style="padding:8px;font-size:0.75rem;color:var(--text-muted);">${v.vin ? v.vin.slice(-6) : (id.slice(-8))}</td>
+                <td style="padding:8px;text-align:right;">
+                    <input type="number" id="anom-cp-${idx}" value="${cp}" placeholder="Cena kat."
+                        style="width:110px;background:var(--bg-input,var(--bg-card));border:1px solid var(--accent-border);color:var(--text-primary);padding:4px 6px;border-radius:5px;text-align:right;font-size:0.8rem;"
+                        oninput="anomRecalc(${idx},'${id}')">
+                </td>
+                <td style="padding:8px;text-align:right;">
+                    <input type="number" id="anom-dc-${idx}" value="${dc}" placeholder="Koszt del."
+                        style="width:110px;background:var(--bg-input,var(--bg-card));border:1px solid var(--accent-border);color:var(--text-primary);padding:4px 6px;border-radius:5px;text-align:right;font-size:0.8rem;"
+                        oninput="anomRecalc(${idx},'${id}')">
+                </td>
+                <td style="padding:8px;text-align:right;">
+                    <input type="number" id="anom-rab-${idx}" value="${rebate}" placeholder="Rabat"
+                        style="width:90px;background:var(--bg-input,var(--bg-card));border:1px solid var(--accent-border);color:var(--text-primary);padding:4px 6px;border-radius:5px;text-align:right;font-size:0.8rem;"
+                        oninput="anomRecalc(${idx},'${id}')">
+                </td>
+                <td style="padding:8px;text-align:right;">
+                    <input type="number" id="anom-sp-${idx}" value="${sp}" placeholder="Cena spr."
+                        style="width:110px;background:var(--bg-input,var(--bg-card));border:1px solid var(--accent-border);color:var(--text-primary);padding:4px 6px;border-radius:5px;text-align:right;font-size:0.8rem;"
+                        oninput="anomRecalc(${idx},'${id}')">
+                </td>
+                <td style="padding:8px;text-align:right;" id="anom-marg-${idx}">
+                    ${anomCalcMarginHtml(sp, cp, rebate, dc)}
+                </td>
+                <td style="padding:8px;text-align:center;">
+                    <button id="anom-btn-${idx}" onclick="anomApprove(${idx},'${id}')"
+                        style="background:var(--accent);color:#000;border:none;padding:5px 10px;border-radius:6px;font-size:0.75rem;cursor:pointer;font-weight:700;white-space:nowrap;">
+                        ✓ → Magazyn
+                    </button>
+                </td>
+            </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+}
+
+function anomCalcMarginHtml(sp, cp, rebate, dc) {
+    sp = parseFloat(sp) || 0;
+    cp = parseFloat(cp) || 0;
+    rebate = parseFloat(rebate) || 0;
+    dc = parseFloat(dc) || (cp ? cp * 0.94 - rebate : 0);
+    if (!sp || !dc) return '<span style="color:var(--text-muted)">—</span>';
+    const mp = sp - dc;
+    const mpct = sp > 0 ? (mp / sp * 100) : 0;
+    const color = mpct < 0 ? 'var(--red)' : mpct < 2 ? 'var(--yellow,#fbbf24)' : 'var(--green,#4ade80)';
+    return `<span style="color:${color};font-weight:700;">${mpct.toFixed(2)}%</span>`;
+}
+
+function anomRecalc(idx, id) {
+    const sp = parseFloat(document.getElementById(`anom-sp-${idx}`)?.value) || 0;
+    const cp = parseFloat(document.getElementById(`anom-cp-${idx}`)?.value) || 0;
+    const rebate = parseFloat(document.getElementById(`anom-rab-${idx}`)?.value) || 0;
+    const dc = parseFloat(document.getElementById(`anom-dc-${idx}`)?.value) || (cp ? cp * 0.94 - rebate : 0);
+    const el = document.getElementById(`anom-marg-${idx}`);
+    if (el) el.innerHTML = anomCalcMarginHtml(sp, cp, rebate, dc);
+    // auto-fill dc if cp changes and dc is empty
+    const dcInput = document.getElementById(`anom-dc-${idx}`);
+    if (dcInput && !dcInput.value && cp) {
+        dcInput.value = Math.round(cp * 0.94 - rebate);
+    }
+}
+
+async function anomApprove(idx, id) {
+    const sp = parseFloat(document.getElementById(`anom-sp-${idx}`)?.value);
+    const cp = parseFloat(document.getElementById(`anom-cp-${idx}`)?.value);
+    const rebate = parseFloat(document.getElementById(`anom-rab-${idx}`)?.value) || 0;
+    const dcInput = parseFloat(document.getElementById(`anom-dc-${idx}`)?.value);
+    const dc = dcInput || (cp ? cp * 0.94 - rebate : 0);
+
+    if (!sp || !dc) {
+        alert('Uzupełnij przynajmniej cenę sprzedaży i koszt dealera (lub cenę katalogową).');
+        return;
+    }
+
+    const mpct = sp > 0 ? ((sp - dc) / sp * 100) : 0;
+    if (mpct < -50 || mpct > 50) {
+        if (!confirm(`Marża wynosi ${mpct.toFixed(2)}% — czy na pewno zatwierdzić?`)) return;
+    }
+
+    const btn = document.getElementById(`anom-btn-${idx}`);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Zapisuję...'; }
+
+    const payload = {
+        otomoto_id: id,
+        sale_price: sp,
+        catalog_price: cp || undefined,
+        dealer_cost: dcInput || undefined,
+        discount: rebate || undefined,
+        anomaly_resolved: true
+    };
+    // Remove undefined fields
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
+    try {
+        await fetch('/api/overrides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        // Apply locally to DATA
+        const car = DATA.find(v => String(v.otomoto_id) === String(id));
+        if (car) {
+            if (sp != null) car.sale_price = sp;
+            if (cp != null) car.catalog_price = cp;
+            car.rebate = rebate;
+            car.dealer_cost = dc;
+            car.margin_pln = sp - dc;
+            car.margin_pct = mpct;
+            car.has_catalog_price = true;
+            car.status = 'OK';
+            car._anomaly_resolved = true;
+        }
+        EDITED_PRICES[id] = payload;
+        localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+
+        // Refresh all sections
+        buildDashboard();
+        buildMagazyn();
+        buildAnomalie(); // re-render (removes approved car from list)
+
+        // Visual feedback
+        const row = document.getElementById(`anom-row-${idx}`);
+        if (row) {
+            row.style.background = 'rgba(74,222,128,0.1)';
+            row.style.opacity = '0.5';
+        }
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = '✓ → Magazyn'; }
+        alert('Błąd zapisu: ' + e.message);
+    }
+}
+
 /* ---- NAVIGATION ---- */
 function switchSection(name) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -929,6 +1135,7 @@ function switchSection(name) {
     document.querySelector(`.nav-link[data-section="${name}"]`)?.classList.add('active');
     if (name === 'analityka' && !chartsInitialized && DATA.length) initCharts();
     if (name === 'mapa') buildMapaDominanceChart();
+    if (name === 'anomalie') buildAnomalie();
 }
 document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', () => switchSection(l.dataset.section)));
 
@@ -980,8 +1187,8 @@ function getMargin(v) {
     if (ed) {
         const sp = ed.sale_price != null ? ed.sale_price : v.sale_price;
         const cp = ed.catalog_price != null ? ed.catalog_price : v.catalog_price;
-        const rebate = v.rebate || 0;
-        const dc = cp * 0.94 - rebate;
+        const rebate = ed.discount != null ? ed.discount : (v.rebate || 0);
+        const dc = ed.dealer_cost != null ? ed.dealer_cost : (cp ? cp * 0.94 - rebate : (v.dealer_cost || 0));
         return { margin_pln: sp - dc, margin_pct: sp > 0 ? ((sp - dc) / sp * 100) : 0, dealer_cost: dc };
     }
     return { margin_pln: v.margin_pln, margin_pct: v.margin_pct, dealer_cost: v.dealer_cost };
@@ -1039,6 +1246,25 @@ async function loadData() {
                 // Merge: server overrides mają priorytet
                 Object.assign(EDITED_PRICES, serverOverrides);
                 localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
+                // Apply approved anomaly overrides — treat resolved anomalies as normal cars
+                DATA.forEach(v => {
+                    const ov = EDITED_PRICES[String(v.otomoto_id)];
+                    if (ov && ov.anomaly_resolved && v.status === 'ANOMALIA') {
+                        const sp = ov.sale_price != null ? ov.sale_price : v.sale_price;
+                        const cp = ov.catalog_price != null ? ov.catalog_price : v.catalog_price;
+                        const rebate = ov.discount != null ? ov.discount : (v.rebate || 0);
+                        const dc = ov.dealer_cost != null ? ov.dealer_cost : (cp ? cp * 0.94 - rebate : (v.dealer_cost || 0));
+                        if (sp != null) v.sale_price = sp;
+                        if (cp != null) v.catalog_price = cp;
+                        v.rebate = rebate;
+                        v.dealer_cost = dc;
+                        v.margin_pln = sp - dc;
+                        v.margin_pct = sp > 0 ? ((sp - dc) / sp * 100) : 0;
+                        v.has_catalog_price = true;
+                        v.status = 'OK';
+                        v._anomaly_resolved = true;
+                    }
+                });
             }
         } catch(e) { console.log('Overrides server unavailable, using localStorage'); }
         // RABATY: ładuj z SETTINGS.rebates (zamiast localStorage)
@@ -1073,6 +1299,7 @@ async function loadData() {
         buildMapa();
         buildRabaty();
         buildTrendy();
+        buildAnomalie();
     } catch(e) {
         console.error('Load error:', e);
         document.querySelector('.main').innerHTML = '<div style="text-align:center;padding:100px 20px;"><h2 style="color:var(--accent)">Nie udało się załadować data.json</h2><p style="color:var(--text-muted);margin-top:12px;">Upewnij się, że plik data.json znajduje się w tym samym folderze.</p><p style="color:var(--red);margin-top:8px;font-size:0.8rem;">' + e.message + '</p></div>';
@@ -1132,10 +1359,10 @@ function buildKPIs() {
             <div class="kpi-value">${avgMargin.toFixed(2)}%</div>
             <div class="kpi-sub">na ${validMargins.length} aut</div>
         </div>
-        <div class="kpi-card red">
+        <div class="kpi-card red" onclick="switchSection('anomalie')" style="cursor:pointer" title="Kliknij aby zarządzać anomaliami">
             <div class="kpi-label">Anomalie</div>
             <div class="kpi-value">${anomalies}</div>
-            <div class="kpi-sub">do weryfikacji</div>
+            <div class="kpi-sub">kliknij → weryfikuj</div>
         </div>
         <div class="kpi-card purple">
             <div class="kpi-label">Elektryki</div>
