@@ -232,8 +232,8 @@
       "year": 2026,
       "fuel": "elektryk",
       "variant": "K11 MY26",
-      "amount": 35000,
-      "name": "Wsparcie 35 000 zł + finansowanie standardowe",
+      "amount": 45000,
+      "name": "Wsparcie 45 000 zł + finansowanie standardowe",
       "type": "standardowe",
       "active": true
     }

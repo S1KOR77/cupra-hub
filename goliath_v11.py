@@ -887,15 +887,6 @@ class MarginCalculator:
                 best_dealer_cost = dc
         
         use_rebate = (best_rebate > 0)
-
-        # ZAWSZE aplikuj rabat dla pojazdów z 2026 roku (jeśli dostępny)
-        if year == 2026 and all_rebates:
-            _force_rebate = max(all_rebates)
-            best_rebate = _force_rebate
-            best_dealer_cost = dealer_cost_base - _force_rebate
-            best_margin_pln = sale_price - best_dealer_cost
-            best_margin_pct = round((best_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
-            use_rebate = True
         
         # margin_with_rebate: użyj najwyższego dostępnego rabatu (do wyświetlania)
         max_rebate = max(candidate_rebates) if candidate_rebates else 0
@@ -2022,16 +2013,38 @@ class GoliathEngine:
                     if "note" in ov:
                         car.note = ov["note"]
                     if changed and car.has_catalog_price and car.sale_price > 0:
-                        fuel_ov = car.fuel or "benzyna"
+                        manual_dc = ov.get("dealer_cost")
+                        manual_discount = ov.get("discount")
                         try:
-                            (car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln,
-                             car.rebate_applied, car.margin_without_rebate_pct, car.margin_with_rebate_pct) = (
-                                MarginCalculator.calculate_v10(
-                                    car.catalog_price, car.sale_price, car.year,
-                                    car.model_raw, car.title, car.description,
-                                    fuel_override=fuel_ov
+                            if manual_dc and manual_dc > 0:
+                                # Ręczny koszt dealera — użyj bezpośrednio
+                                car.dealer_cost = manual_dc
+                                car.rebate = manual_discount or 0
+                                car.rebate_applied = car.rebate > 0
+                                car.margin_pln = car.sale_price - car.dealer_cost
+                                car.margin_pct = round((car.margin_pln / car.sale_price) * 100, 2) if car.sale_price > 0 else 0.0
+                                car.margin_without_rebate_pct = car.margin_pct
+                                car.margin_with_rebate_pct = car.margin_pct
+                            elif manual_discount is not None and manual_discount > 0:
+                                # Ręczny rabat — przelicz koszt dealera na jego podstawie
+                                car.rebate = manual_discount
+                                car.rebate_applied = True
+                                car.dealer_cost = round(car.catalog_price * 0.94 - car.rebate)
+                                car.margin_pln = car.sale_price - car.dealer_cost
+                                car.margin_pct = round((car.margin_pln / car.sale_price) * 100, 2) if car.sale_price > 0 else 0.0
+                                car.margin_without_rebate_pct = car.margin_pct
+                                car.margin_with_rebate_pct = car.margin_pct
+                            else:
+                                # Brak ręcznych wartości — standardowe przeliczenie
+                                fuel_ov = car.fuel or "benzyna"
+                                (car.dealer_cost, car.rebate, car.margin_pct, car.margin_pln,
+                                 car.rebate_applied, car.margin_without_rebate_pct, car.margin_with_rebate_pct) = (
+                                    MarginCalculator.calculate_v10(
+                                        car.catalog_price, car.sale_price, car.year,
+                                        car.model_raw, car.title, car.description,
+                                        fuel_override=fuel_ov
+                                    )
                                 )
-                            )
                             if car.vehicle_type == "demo":
                                 car.status = "DEMO"
                             elif car.vehicle_type == "used":

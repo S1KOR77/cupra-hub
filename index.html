@@ -1046,14 +1046,19 @@ function anomRecalc(idx, id) {
     const sp = parseFloat(document.getElementById(`anom-sp-${idx}`)?.value) || 0;
     const cp = parseFloat(document.getElementById(`anom-cp-${idx}`)?.value) || 0;
     const rebate = parseFloat(document.getElementById(`anom-rab-${idx}`)?.value) || 0;
-    const dc = parseFloat(document.getElementById(`anom-dc-${idx}`)?.value) || (cp ? cp * 0.94 - rebate : 0);
+    const dcInput = document.getElementById(`anom-dc-${idx}`);
+
+    // Jeśli mamy cenę kat., zawsze przelicz koszt dealera uwzględniając rabat
+    let dc;
+    if (cp > 0) {
+        dc = Math.round(cp * 0.94 - rebate);
+        if (dcInput) dcInput.value = dc;
+    } else {
+        dc = parseFloat(dcInput?.value) || 0;
+    }
+
     const el = document.getElementById(`anom-marg-${idx}`);
     if (el) el.innerHTML = anomCalcMarginHtml(sp, cp, rebate, dc);
-    // auto-fill dc if cp changes and dc is empty
-    const dcInput = document.getElementById(`anom-dc-${idx}`);
-    if (dcInput && !dcInput.value && cp) {
-        dcInput.value = Math.round(cp * 0.94 - rebate);
-    }
 }
 
 async function anomApprove(idx, id) {
