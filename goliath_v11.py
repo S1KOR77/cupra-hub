@@ -674,6 +674,7 @@ class MarginCalculator:
     # Mapowanie wariantów modelu na klucz rabatu (Leon ST = Leon, itd.)
     MODEL_REBATE_MAP = {
         "leon st": "leon",
+        "leon-st": "leon",           # cupra-leon-st → po replace("cupra-","") → "leon-st"
         "leon-sportstourer": "leon",
         "leon sportstourer": "leon",
     }
