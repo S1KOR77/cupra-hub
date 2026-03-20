@@ -985,16 +985,19 @@ class OfferParser:
         Wykryj typ pojazdu na podstawie tytułu, opisu i parametru new/used.
         Returns: (vehicle_type, is_demo)
         """
-        search_text = f"{title} {description}".lower()
+        full_text = f"{title} {description}".lower()
+        # USED_KEYWORDS: sprawdzaj TYLKO w tytule i pierwszych 500 znakach opisu
+        # Unikamy false-positive z boilerplate na końcu opisu (np. "auta używanego" = odkup)
+        short_text = f"{title} {description[:500]}".lower()
 
-        # Sprawdź słowa demo/ekspozycyjne
+        # Sprawdź słowa demo/ekspozycyjne (pełny opis - demo może być gdziekolwiek)
         for keyword in self.DEMO_KEYWORDS:
-            if keyword in search_text:
+            if keyword in full_text:
                 return "demo", True
 
-        # Sprawdź słowa używane
+        # Sprawdź słowa używane (tylko tytuł + początek opisu)
         for keyword in self.USED_KEYWORDS:
-            if keyword in search_text:
+            if keyword in short_text:
                 return "used", False
 
         # Parametr Otomoto: is_new=False → używane
