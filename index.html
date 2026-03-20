@@ -672,6 +672,10 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
             <select class="filter-select" id="fDealer"><option value="">Wszyscy</option></select>
         </div>
         <div class="filter-group">
+            <div class="filter-label">ID Otomoto</div>
+            <input type="text" class="filter-input" id="fOtomotoId" placeholder="np. 12345678" style="width:130px" oninput="applyFilters()">
+        </div>
+        <div class="filter-group">
             <div class="filter-label">Rocznik</div>
             <select class="filter-select" id="fYear"><option value="">Wszystkie</option></select>
         </div>
@@ -714,10 +718,6 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
                 <option value="new">Nowe</option>
                 <option value="demo">Demo</option>
             </select>
-        </div>
-        <div class="filter-group">
-            <div class="filter-label">ID Otomoto</div>
-            <input type="text" class="filter-input" id="fOtomotoId" placeholder="np. 12345678" style="width:130px">
         </div>
         <div class="filter-group" style="justify-content:flex-end">
             <button class="btn" onclick="resetFilters()">Reset</button>
