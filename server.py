@@ -201,6 +201,12 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
                 entry['sale_price'] = float(data['sale_price'])
             if data.get('catalog_price') is not None:
                 entry['catalog_price'] = float(data['catalog_price'])
+            if data.get('dealer_cost') is not None:
+                entry['dealer_cost'] = float(data['dealer_cost'])
+            if data.get('discount') is not None:
+                entry['discount'] = float(data['discount'])
+            if data.get('anomaly_resolved') is not None:
+                entry['anomaly_resolved'] = bool(data['anomaly_resolved'])
 
             if entry:
                 overrides[otomoto_id] = entry
