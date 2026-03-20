@@ -1733,6 +1733,7 @@ function editPrice(id) {
     const ed = getEdited(v.otomoto_id) || {};
     const curSP = ed.sale_price != null ? ed.sale_price : v.sale_price;
     const curCP = ed.catalog_price != null ? ed.catalog_price : v.catalog_price;
+    const curImpPct = ed.importer_pct != null ? ed.importer_pct : (v.importer_pct != null ? v.importer_pct : 6);
 
     document.getElementById('modalContent').innerHTML = `
         <button class="modal-close" onclick="closeModal()">&times;</button>
@@ -1742,8 +1743,10 @@ function editPrice(id) {
             <input type="number" id="editSalePrice" value="${curSP || ''}" oninput="calcEditPreview('${v.otomoto_id}')">
             <label>Cena katalogowa (PLN)</label>
             <input type="number" id="editCatalogPrice" value="${curCP || ''}" oninput="calcEditPreview('${v.otomoto_id}')">
-            <label>Rabat (PLN)</label>
+            <label>Rabat importera (PLN)</label>
             <input type="number" id="editDiscount" value="${ed.rebate != null ? ed.rebate : (v.rebate || 0)}" oninput="calcEditPreview('${v.otomoto_id}')">
+            <label>% marży importera (domyślnie 6%)</label>
+            <input type="number" id="editImporterPct" value="${curImpPct}" min="0" max="50" step="0.1" oninput="calcEditPreview('${v.otomoto_id}')">
             <div class="edit-result" id="editPreview">
                 <div><span style="color:var(--text-muted)">Koszt dealera:</span><span id="epDC">-</span></div>
                 <div><span style="color:var(--text-muted)">Marża PLN:</span><span id="epMP">-</span></div>
@@ -1766,7 +1769,9 @@ function calcEditPreview(id) {
     const sp = parseFloat(document.getElementById('editSalePrice').value) || 0;
     const cp = parseFloat(document.getElementById('editCatalogPrice').value) || 0;
     const rebate = parseFloat(document.getElementById('editDiscount')?.value) || 0;
-    const dc = cp > 0 ? cp * 0.94 - rebate : (v.dealer_cost || 0);
+    const impPct = parseFloat(document.getElementById('editImporterPct')?.value);
+    const impFactor = !isNaN(impPct) ? (1 - impPct / 100) : 0.94;
+    const dc = cp > 0 ? cp * impFactor - rebate : (v.dealer_cost || 0);
     const mp = sp - dc;
     const mpct = sp > 0 ? (mp / sp * 100) : 0;
     document.getElementById('epDC').textContent = fmtPln(Math.round(dc));
@@ -1781,11 +1786,14 @@ async function saveEdit(id) {
     const cp = parseFloat(document.getElementById('editCatalogPrice').value);
     const discountVal = document.getElementById('editDiscount')?.value;
     const discount = discountVal !== '' && discountVal !== undefined ? parseFloat(discountVal) : null;
-    if (!sp && !cp && discount === null) { closeModal(); return; }
+    const impPctVal = document.getElementById('editImporterPct')?.value;
+    const impPct = impPctVal !== '' && impPctVal !== undefined ? parseFloat(impPctVal) : null;
+    if (!sp && !cp && discount === null && impPct === null) { closeModal(); return; }
     EDITED_PRICES[id] = {};
     if (sp) EDITED_PRICES[id].sale_price = sp;
     if (cp) EDITED_PRICES[id].catalog_price = cp;
     if (discount !== null) EDITED_PRICES[id].rebate = discount;
+    if (impPct !== null) EDITED_PRICES[id].importer_pct = impPct;
     localStorage.setItem('edited_prices', JSON.stringify(EDITED_PRICES));
     // Zapisz na serwer (persystentnie)
     try {
