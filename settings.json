@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "last_updated": "2026-03-19",
+  "last_updated": "2026-03-20",
   "valid_from": "2026-03-01",
   "valid_to": "2026-04-30",
   "margin_config": {
@@ -67,20 +67,9 @@
       "year": 2026,
       "fuel": "benzyna",
       "variant": "KUD/KUG",
-      "amount": 15000,
-      "name": "Wsparcie 15 000 zł + finansowanie standardowe",
+      "amount": 20000,
+      "name": "Wsparcie 20 000 zł + finansowanie standardowe",
       "type": "standardowe",
-      "active": true
-    },
-    {
-      "id": "leon_2026_benzyna_promo",
-      "model": "leon",
-      "year": 2026,
-      "fuel": "benzyna",
-      "variant": "KUD/KUG",
-      "amount": 10000,
-      "name": "Wsparcie 10 000 zł + finansowanie promocyjne",
-      "type": "promocyjne",
       "active": true
     },
     {
@@ -89,20 +78,9 @@
       "year": 2026,
       "fuel": "benzyna",
       "variant": "ST",
-      "amount": 15000,
-      "name": "Wsparcie 15 000 zł + finansowanie standardowe (Leon ST 2026)",
+      "amount": 20000,
+      "name": "Wsparcie 20 000 zł + finansowanie standardowe (Leon ST 2026)",
       "type": "standardowe",
-      "active": true
-    },
-    {
-      "id": "leon_st_2026_benzyna_promo",
-      "model": "leon",
-      "year": 2026,
-      "fuel": "benzyna",
-      "variant": "ST",
-      "amount": 10000,
-      "name": "Wsparcie 10 000 zł + fin. promocyjne (Leon ST 2026)",
-      "type": "promocyjne",
       "active": true
     },
     {

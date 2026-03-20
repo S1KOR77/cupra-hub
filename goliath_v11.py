@@ -887,6 +887,15 @@ class MarginCalculator:
                 best_dealer_cost = dc
         
         use_rebate = (best_rebate > 0)
+
+        # ZAWSZE aplikuj rabat dla pojazdów z 2026 roku (jeśli dostępny)
+        if year == 2026 and all_rebates:
+            _force_rebate = max(all_rebates)
+            best_rebate = _force_rebate
+            best_dealer_cost = dealer_cost_base - _force_rebate
+            best_margin_pln = sale_price - best_dealer_cost
+            best_margin_pct = round((best_margin_pln / sale_price) * 100, 2) if sale_price > 0 else 0.0
+            use_rebate = True
         
         # margin_with_rebate: użyj najwyższego dostępnego rabatu (do wyświetlania)
         max_rebate = max(candidate_rebates) if candidate_rebates else 0
