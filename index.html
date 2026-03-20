@@ -1570,6 +1570,7 @@ function applyFilters() {
 function resetFilters() {
 
     ['fModel','fDealer','fYear','fFuel','fStatus','fVehicleType'].forEach(id => document.getElementById(id).value = '');
+    const oid = document.getElementById('fOtomotoId'); if(oid) oid.value = '';
     ['fPowerMin','fPowerMax'].forEach(id => document.getElementById(id).value = '');
     ['fPriceMin','fPriceMax','fMarginMin','fMarginMax'].forEach(id => document.getElementById(id).value = '');
     FILTERED = [...DATA];
