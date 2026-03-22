@@ -1377,15 +1377,17 @@ class OfferParser:
                     special_edition = "Limited"
                 break
         
-        # ── Dodatkowa heurystyka demo: is_new=False w parametrach ──
-        # v16.1: NIE ufaj ślepo parametrowi new_used!
-        # Dealerzy mają konta "używane" (np. uzywanemotorpolwroclaw) gdzie wstawiają
-        # NOWE auta z 1km. Jeśli mileage <= MAX_MILEAGE i year >= MIN_YEAR → to jest NOWE.
-        if vehicle_type == "new" and new_used != "new":
-            if mileage > Config.MAX_MILEAGE:
-                vehicle_type = "used"  # Prawdziwie używane (wysoki przebieg)
-            else:
-                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → traktujemy jako NOWE")
+        # ── Dodatkowa heurystyka: NIE ufaj parametrowi new_used dla kont "używane" ──
+        # v16.2 FIX: Dealerzy (np. Motorpol, AutoGazda) mają konta "używane" na Otomoto
+        # gdzie wstawiają FABRYCZNIE NOWE auta z 1km. Otomoto ustawia new_used="used"
+        # przez co _detect_vehicle_type() zwraca "used" → auto ukryte z dashboardu.
+        # Jeśli auto nie ma słów "używane/poleasingowe/itp." w tytule/opisie
+        # i przebieg ≤ MAX_MILEAGE → traktujemy jako NOWE niezależnie od new_used.
+        if vehicle_type == "used" and new_used != "new":
+            if mileage <= Config.MAX_MILEAGE:
+                # Brak słów kluczowych "używane" + niski przebieg = nowe na koncie "używane"
+                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → NOWE (konto używane dealera)")
+                vehicle_type = "new"
 
         # ── Seller ──
         seller = ad.get("seller", {})
