@@ -107,6 +107,7 @@ HOME_DEALER = "MOTORPOL WROCŁAW"  # 🏠 Nasz salon — punkt odniesienia
 
 DEALERS = [
     {"name": "MOTORPOL WROCŁAW",     "url": "https://cupramotorpolwroclaw.otomoto.pl/inventory", "home": True},
+    {"name": "MOTORPOL WROCŁAW",     "url": "https://uzywanemotorpolwroclaw.otomoto.pl/inventory"},
     {"name": "PLICHTA GDYNIA",       "url": "https://cupra-plichta-gdynia.otomoto.pl/inventory"},
     {"name": "PLICHTA GDAŃSK",       "url": "https://cupra-plichta-gdansk.otomoto.pl/inventory"},
     {"name": "PLICHTA",              "url": "https://cupra-plichta.otomoto.pl/inventory"},
@@ -148,6 +149,10 @@ for _d in DEALERS:
     _m = _re.match(r'https://([^.]+)\.otomoto\.pl', _d['url'])
     if _m:
         DEALER_DOMAINS[_m.group(1)] = _d['name']
+
+# v16.1: Dodatkowe domeny "używane" kont dealerów
+DEALER_DOMAINS["uzywanemotorpolwroclaw"] = "MOTORPOL WROCŁAW"
+DEALER_DOMAINS["uzywane-autogazda"] = "AUTO GAZDA"
 
 # ── v16: Keyword fallback matching (seller.name → dealer_short) ─────────────
 # Ordered: most specific first to avoid false positives
@@ -193,10 +198,18 @@ DEALER_NAME_KEYWORDS = [
     ("bydgoszcz",          "PLICHTA BYDGOSZCZ"),
     ("kraków",             "KRAKÓW"),
     ("krakow",             "KRAKÓW"),
+    # Dodatkowe konta "używane" dealerów
+    ("uzywane-autogazda",  "AUTO GAZDA"),
+    ("motopatent",         "LELLEK GLIWICE"),
+    ("autorud",            "AUTORUD"),
+    ("strefa cupra",       "STREFA CUPRA PŁOCK"),
+    ("płock",              "STREFA CUPRA PŁOCK"),
+    ("plock",              "STREFA CUPRA PŁOCK"),
     # Most ambiguous — last resort
     ("warszawa",           "WARSZAWA"),
     ("plichta",            "PLICHTA"),
     ("studio",             "STUDIO"),
+    ("lellek",             "LELLEK OPOLE"),
 ]
 
 
@@ -1365,8 +1378,14 @@ class OfferParser:
                 break
         
         # ── Dodatkowa heurystyka demo: is_new=False w parametrach ──
+        # v16.1: NIE ufaj ślepo parametrowi new_used!
+        # Dealerzy mają konta "używane" (np. uzywanemotorpolwroclaw) gdzie wstawiają
+        # NOWE auta z 1km. Jeśli mileage <= MAX_MILEAGE i year >= MIN_YEAR → to jest NOWE.
         if vehicle_type == "new" and new_used != "new":
-            vehicle_type = "used"  # Otomoto mówi 'used' → szanujemy
+            if mileage > Config.MAX_MILEAGE:
+                vehicle_type = "used"  # Prawdziwie używane (wysoki przebieg)
+            else:
+                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → traktujemy jako NOWE")
 
         # ── Seller ──
         seller = ad.get("seller", {})
