@@ -100,14 +100,13 @@ class Config:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  🏢  REJESTR DEALERÓW (29 salonów)
+#  🏢  REJESTR DEALERÓW (30 salonów)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 HOME_DEALER = "MOTORPOL WROCŁAW"  # 🏠 Nasz salon — punkt odniesienia
 
 DEALERS = [
-    {"name": "MOTORPOL WROCŁAW",     "url": "https://cupramotorpolwroclaw.otomoto.pl/inventory?brands=cupra", "home": True},
-    {"name": "MOTORPOL WROCŁAW",     "url": "https://uzywanemotorpolwroclaw.otomoto.pl/inventory"},
+    {"name": "MOTORPOL WROCŁAW",     "url": "https://cupramotorpolwroclaw.otomoto.pl/inventory", "home": True},
     {"name": "PLICHTA GDYNIA",       "url": "https://cupra-plichta-gdynia.otomoto.pl/inventory"},
     {"name": "PLICHTA GDAŃSK",       "url": "https://cupra-plichta-gdansk.otomoto.pl/inventory"},
     {"name": "PLICHTA",              "url": "https://cupra-plichta.otomoto.pl/inventory"},
@@ -150,8 +149,7 @@ for _d in DEALERS:
     if _m:
         DEALER_DOMAINS[_m.group(1)] = _d['name']
 
-# v16.1: Dodatkowe domeny "używane" kont dealerów
-DEALER_DOMAINS["uzywanemotorpolwroclaw"] = "MOTORPOL WROCŁAW"
+# v17: Dodatkowe domeny "używane" kont dealerów (jeśli dealer ma osobne konto używane)
 DEALER_DOMAINS["uzywane-autogazda"] = "AUTO GAZDA"
 
 # ── v16: Keyword fallback matching (seller.name → dealer_short) ─────────────
@@ -635,8 +633,9 @@ class InventoryCollector:
 
             if total and total > 0 and total_ads is None:
                 total_ads = total
-                expected_pages = math.ceil(total / ADS_PER_PAGE)
-                logging.info(f"    📊 Global: {total} ogłoszeń Cupra, szacowane stron: {expected_pages}")
+                actual_page_size = len(ads) if ads and len(ads) > 0 else ADS_PER_PAGE
+                expected_pages = math.ceil(total / actual_page_size) + 1  # +1 bufor bezpieczeństwa
+                logging.info(f"    📊 Global: {total} ogłoszeń Cupra, ogłoszeń/stronę: {actual_page_size}, szacowane stron: {expected_pages}")
 
             page_links = set()
             if ads:
@@ -726,8 +725,10 @@ class InventoryCollector:
             # Calculate expected pages from total (first page that has it)
             if total and total > 0 and total_ads is None:
                 total_ads = total
-                expected_pages = math.ceil(total / ADS_PER_PAGE)
-                logging.info(f"    📊 Total ogłoszeń: {total}, oczekiwane strony: {expected_pages}")
+                # v17: użyj faktycznej liczby ogłoszeń z pierwszej strony zamiast hardkodowanego 30
+                actual_page_size = len(ads) if ads and len(ads) > 0 else ADS_PER_PAGE
+                expected_pages = math.ceil(total / actual_page_size) + 1  # +1 bufor bezpieczeństwa
+                logging.info(f"    📊 Total ogłoszeń: {total}, ogłoszeń/stronę: {actual_page_size}, oczekiwane strony: {expected_pages}")
 
             page_links = set()
 
@@ -1412,10 +1413,14 @@ class OfferParser:
             # Priorytet 1: dopasowanie przez URL subdomeny dealera (najpewniejsze)
             seller_url = (seller.get("url", "") or seller.get("siteUrl", "") or
                           seller.get("subdomain", "") or "").lower()
-            for domain, dname in DEALER_DOMAINS.items():
-                if domain in seller_url:
-                    matched = dname
-                    break
+            # v17 FIX: exact subdomain match — poprzednia logika "if domain in seller_url"
+            # dopasowywała "cupra" do WSZYSTKICH dealerów (bo każdy URL zawiera "cupra")
+            # co powodowało że PLICHTA BYDGOSZCZ dostawał auta z każdego salonu.
+            _subdomain_m = re.match(r'(?:https?://)?([^./]+)\.otomoto\.pl', seller_url)
+            if _subdomain_m:
+                _subdomain = _subdomain_m.group(1)
+                if _subdomain in DEALER_DOMAINS:
+                    matched = DEALER_DOMAINS[_subdomain]
 
             # Priorytet 2: dopasowanie przez nazwę sprzedawcy (keyword matching)
             if not matched and dealer_full:
