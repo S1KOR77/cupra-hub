@@ -1215,24 +1215,31 @@ class OfferParser:
         """
         Wykryj typ pojazdu na podstawie tytułu, opisu i parametru new/used.
         Returns: (vehicle_type, is_demo)
+
+        v18.1 FIX: USED_KEYWORDS sprawdzamy TYLKO gdy Otomoto jawnie mówi new_used!="new".
+        Zapobiega fałszywym trafieniam jak "pomoc w sprzedaży auta używanego" w tekście dealera.
+        Priorytet: 1) DEMO keywords (zawsze), 2) is_new_param (z Otomoto), 3) USED keywords
         """
         search_text = f"{title} {description}".lower()
 
-        # Sprawdź słowa demo/ekspozycyjne
+        # Sprawdź słowa demo/ekspozycyjne — zawsze, niezależnie od new_used
         for keyword in self.DEMO_KEYWORDS:
             if keyword in search_text:
                 return "demo", True
 
-        # Sprawdź słowa używane
+        # Jeśli Otomoto jawnie mówi new_used="new" → ufamy temu parametrowi.
+        # NIE sprawdzamy USED_KEYWORDS — unikamy fałszywych trafień
+        # (np. "pomożemy odsprzedać Twoje dotychczasowe auto używane" w opisie nowego auta)
+        if is_new_param:
+            return "new", False
+
+        # Otomoto mówi new_used="used" → sprawdź USED_KEYWORDS dla potwierdzenia
         for keyword in self.USED_KEYWORDS:
             if keyword in search_text:
                 return "used", False
 
-        # Parametr Otomoto: is_new=False → używane
-        if not is_new_param:
-            return "used", False
-
-        return "new", False
+        # Domyślnie: ufamy parametrowi Otomoto
+        return "used", False
 
     def parse(self, url: str, dealer_short: str) -> Optional[CarData]:
         """Pobierz i sparsuj stronę ogłoszenia."""
