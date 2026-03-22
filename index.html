@@ -776,6 +776,14 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
         <div class="tab active" data-mtab="ranking">Ranking Dealer&oacute;w</div>
         <div class="tab" data-mtab="dominance">Model Dominance</div>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600">ROK:</span>
+        <div class="tabs" id="mapaYearTabs" style="margin:0">
+            <div class="tab active" data-myear="all">Wszystkie</div>
+            <div class="tab" data-myear="2025">2025</div>
+            <div class="tab" data-myear="2026">2026</div>
+        </div>
+    </div>
     <div id="mapaRanking">
         <div class="table-wrap">
             <table id="mapaTable">
@@ -907,6 +915,7 @@ const PAGE_SIZE = 50;
 let salonSort = { col: 'avg_margin', dir: 'desc' };
 let salonTab = 'all';
 let mapaSort = { col: 'avg_margin', dir: 'desc' };
+let mapaYearFilter = 'all';  // 'all' | '2025' | '2026'
 
 /* ---- THEMES ---- */
 const THEMES = {
@@ -1923,7 +1932,11 @@ function buildMapa() {
 }
 
 function buildMapaRanking() {
-    const valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    let valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    if (mapaYearFilter !== 'all') {
+        const yr = parseInt(mapaYearFilter);
+        valid = valid.filter(v => v.year === yr);
+    }
     const grouped = {};
     valid.forEach(v => {
         const d = v.dealer_short || v.dealer || '-';
@@ -1967,6 +1980,14 @@ document.getElementById('mapaTable').querySelector('thead').addEventListener('cl
     if (!th || !th.dataset.dcol) return;
     if (mapaSort.col === th.dataset.dcol) mapaSort.dir = mapaSort.dir === 'asc' ? 'desc' : 'asc';
     else { mapaSort.col = th.dataset.dcol; mapaSort.dir = 'desc'; }
+    buildMapaRanking();
+});
+
+document.getElementById('mapaYearTabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab || !tab.dataset.myear) return;
+    mapaYearFilter = tab.dataset.myear;
+    document.querySelectorAll('#mapaYearTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.myear === mapaYearFilter));
     buildMapaRanking();
 });
 

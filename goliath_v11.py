@@ -106,7 +106,7 @@ class Config:
 HOME_DEALER = "MOTORPOL WROCŁAW"  # 🏠 Nasz salon — punkt odniesienia
 
 DEALERS = [
-    {"name": "MOTORPOL WROCŁAW",     "url": "https://cupramotorpolwroclaw.otomoto.pl/inventory", "home": True},
+    {"name": "MOTORPOL WROCŁAW",     "url": "https://cupramotorpolwroclaw.otomoto.pl/inventory?brands=cupra", "home": True},
     {"name": "MOTORPOL WROCŁAW",     "url": "https://uzywanemotorpolwroclaw.otomoto.pl/inventory"},
     {"name": "PLICHTA GDYNIA",       "url": "https://cupra-plichta-gdynia.otomoto.pl/inventory"},
     {"name": "PLICHTA GDAŃSK",       "url": "https://cupra-plichta-gdansk.otomoto.pl/inventory"},
@@ -592,6 +592,11 @@ class InventoryCollector:
                     if 'publishedAds' in parsed:
                         ads = parsed['publishedAds'].get('ads', [])
                         total = parsed['publishedAds'].get('total', 0)
+                        # v16.3: Normalize protocol-relative URLs (//) to https://
+                        for ad in ads:
+                            u = ad.get('url', '')
+                            if u.startswith('//'):
+                                ad['url'] = 'https:' + u
                         return ads, total
             return [], 0
         except Exception as e:
@@ -687,7 +692,11 @@ class InventoryCollector:
         Never breaks early just because one page had no Cupra cars.
         """
         all_links: Set[str] = set()
-        base_url = dealer_url.split("?")[0]
+        # v16.3: Preserve query params when paginating (e.g. ?brands=cupra stays on all pages)
+        if "?" in dealer_url:
+            base_url, base_params = dealer_url.split("?", 1)
+        else:
+            base_url, base_params = dealer_url, ""
         consecutive_failures = 0
         MAX_CONSECUTIVE_FAILURES = 3
         expected_pages = Config.MAX_PAGES_PER_DEALER  # Default, updated from JSON
@@ -696,7 +705,10 @@ class InventoryCollector:
         empty_pages = 0  # Pages with 0 ads at all (not just 0 Cupra)
 
         for page in range(1, Config.MAX_PAGES_PER_DEALER + 1):
-            url = f"{base_url}?page={page}" if page > 1 else base_url
+            if page > 1:
+                url = f"{base_url}?{base_params}&page={page}" if base_params else f"{base_url}?page={page}"
+            else:
+                url = dealer_url
             html = self.client.get(url)
             if not html:
                 consecutive_failures += 1
@@ -1595,9 +1607,10 @@ class Exporter:
     @staticmethod
     def to_json(cars: List[CarData], filepath: str):
         # Filtruj TYLKO faktycznie używane auta — BRAK_CENY_KAT to nowe auta bez dopasowania cennika
+        # v16.3: Export ONLY vehicle_type=new (usuwa demo i używane z dashboardu)
         cars_for_export = [
             car for car in cars 
-            if car.status != "UŻYWANE" and car.vehicle_type != "used"
+            if car.vehicle_type == "new"
         ]
         used_count = len(cars) - len(cars_for_export)
         brak_kat = sum(1 for c in cars_for_export if c.status == "BRAK_CENY_KAT")
