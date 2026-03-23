@@ -63,12 +63,12 @@ class Config:
     """Wszystkie ustawienia w jednym miejscu."""
 
     # --- Wydajność ---
-    MAX_WORKERS: int = 5
+    MAX_WORKERS: int = 1          # v20.1: sekwencyjnie — eliminuje burst 403 od Otomoto
     REQUEST_TIMEOUT: int = 25
     MAX_RETRIES: int = 3
-    RETRY_DELAY: float = 3.0
-    MIN_DELAY: float = 0.8
-    MAX_DELAY: float = 2.0
+    RETRY_DELAY: float = 5.0      # v20.1: zwiększono 3→5s (dłuższe czekanie po 403)
+    MIN_DELAY: float = 1.5        # v20.1: zwiększono 0.8→1.5s między requestami
+    MAX_DELAY: float = 3.0        # v20.1: zwiększono 2.0→3.0s
     MAX_PAGES_PER_DEALER: int = 999  # Skanuj WSZYSTKIE strony!
 
     # --- Pliki wyjściowe ---
@@ -534,7 +534,7 @@ class HttpClient:
                     logging.warning(f"  ⚠️  HTTP 429 — czekam {wait:.0f}s...")
                     time.sleep(wait)
                 elif resp.status_code in (403, 503):
-                    wait = Config.RETRY_DELAY * attempt
+                    wait = Config.RETRY_DELAY * (2 ** attempt)  # v20.1: exponential — 10s, 20s, 40s
                     logging.warning(f"  ⚠️  HTTP {resp.status_code} — czekam {wait:.0f}s (próba {attempt}/{Config.MAX_RETRIES})")
                     time.sleep(wait)
                 else:
