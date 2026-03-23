@@ -98,9 +98,6 @@ class Config:
     MARGIN_NORMAL_MIN: float = -0.6
     MARGIN_NORMAL_MAX: float = 7.0
 
-    # --- v18: Pełny rescan (ignoruj cache, skanuj każde ogłoszenie od zera) ---
-    FORCE_FULL_SCAN: bool = True
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  🏢  REJESTR DEALERÓW (30 salonów)
@@ -442,10 +439,6 @@ class SmartMemory:
           - Ma status OK lub ELEKTRYK_OK
           - Marża w bezpiecznym zakresie
         """
-        # v18: Pełny rescan — nie pomijaj NICZEGO
-        if Config.FORCE_FULL_SCAN:
-            return False
-
         if url not in self.cache:
             return False
 
@@ -620,7 +613,6 @@ class InventoryCollector:
         expected_pages = 100
         ADS_PER_PAGE = 32
         consecutive_failures = 0
-        no_new_pages = 0  # v18: Consecutive pages with 0 NEW links
 
         logging.info(f"  🌐 GLOBAL SCAN: otomoto.pl/osobowe/cupra — szukam wszystkich Cupr")
 
@@ -679,20 +671,15 @@ class InventoryCollector:
             if new_links:
                 logging.info(f"    📄 Global str.{page:>3}: +{len(new_links):>4}  (razem: {len(all_links)})")
 
-            # === STOP CONDITIONS (v18: robust) ===
-            # 1. Pusta strona
+            # Stop: przeskanowano wszystkie strony wg total
+            if total_ads and page >= expected_pages:
+                logging.info(f"  ✅ Global: wszystkie {expected_pages} stron przeskanowane ({len(all_links)} linków)")
+                break
+
+            # Stop: pusta strona
             if not ads and not page_links:
                 logging.info(f"  ✅ Global: pusta strona {page} — koniec")
                 break
-
-            # 2. Brak nowych linków na 2+ kolejnych stronach
-            if not new_links:
-                no_new_pages += 1
-                if no_new_pages >= 2:
-                    logging.info(f"  ✅ Global: {no_new_pages} stron bez nowych linków — koniec")
-                    break
-            else:
-                no_new_pages = 0
 
         logging.info(f"  🌐 Global: {len(all_links)} unikalnych linków Cupra znalezione\n")
         return all_links
@@ -715,7 +702,6 @@ class InventoryCollector:
         total_ads = None
         ADS_PER_PAGE = 30  # Otomoto standard
         empty_pages = 0  # Pages with 0 ads at all (not just 0 Cupra)
-        no_new_pages = 0  # v18: Consecutive pages with 0 NEW links
 
         for page in range(1, Config.MAX_PAGES_PER_DEALER + 1):
             if page > 1:
@@ -797,20 +783,21 @@ class InventoryCollector:
             if page > 1 and new_links:
                 logging.info(f"    📄 Strona {page}: +{len(new_links)} nowych Cupra")
 
-            # === STOP CONDITIONS (v18: robust — nigdy nie kończ za wcześnie) ===
-            # 1. Pusta strona (brak ogłoszeń w JSON i HTML)
+            # === STOP CONDITIONS (v14: total-based) ===
+            # 1. We've reached the expected number of pages from JSON total
+            if total_ads and page >= expected_pages:
+                logging.info(f"    ✅ Strona {page}/{expected_pages}: Wszystkie strony przeskanowane")
+                break
+
+            # 2. Page returned 0 ads total (truly beyond last page)
             if not ads and not page_links:
                 logging.info(f"    ✅ Strona {page}: Pusta strona — koniec dealera")
                 break
 
-            # 2. Brak NOWYCH linków na 2+ kolejnych stronach = widzieliśmy wszystko
-            if not new_links:
-                no_new_pages += 1
-                if no_new_pages >= 2:
-                    logging.info(f"    ✅ {no_new_pages} stron bez nowych linków — koniec dealera")
-                    break
-            else:
-                no_new_pages = 0
+            # 3. Safety: 2 consecutive truly empty pages (no ads at all)
+            if empty_pages >= 2:
+                logging.info(f"    ✅ 2 puste strony z rzędu — koniec dealera")
+                break
 
         logging.info(f"    ✔️ Razem Cupra z dealera: {len(all_links)} linków")
         return all_links
@@ -1199,6 +1186,9 @@ class OfferParser:
         'zarejestrowany na dealer',       # registered to dealer = demo (AUTO GAZDA)
         'zarejestrowane na dealer',
         'samochód z salonu',              # exhibition car
+        'uruchomioną gwarancją',          # spad z gwarancją (warranty started = registered/demo)
+        'uruchomiona gwarancja',          # wariant pisowni
+        'z uruchomioną',                  # skrót: z uruchomioną gwarancją
     ]
 
     USED_KEYWORDS = [
@@ -1215,31 +1205,24 @@ class OfferParser:
         """
         Wykryj typ pojazdu na podstawie tytułu, opisu i parametru new/used.
         Returns: (vehicle_type, is_demo)
-
-        v18.1 FIX: USED_KEYWORDS sprawdzamy TYLKO gdy Otomoto jawnie mówi new_used!="new".
-        Zapobiega fałszywym trafieniam jak "pomoc w sprzedaży auta używanego" w tekście dealera.
-        Priorytet: 1) DEMO keywords (zawsze), 2) is_new_param (z Otomoto), 3) USED keywords
         """
         search_text = f"{title} {description}".lower()
 
-        # Sprawdź słowa demo/ekspozycyjne — zawsze, niezależnie od new_used
+        # Sprawdź słowa demo/ekspozycyjne
         for keyword in self.DEMO_KEYWORDS:
             if keyword in search_text:
                 return "demo", True
 
-        # Jeśli Otomoto jawnie mówi new_used="new" → ufamy temu parametrowi.
-        # NIE sprawdzamy USED_KEYWORDS — unikamy fałszywych trafień
-        # (np. "pomożemy odsprzedać Twoje dotychczasowe auto używane" w opisie nowego auta)
-        if is_new_param:
-            return "new", False
-
-        # Otomoto mówi new_used="used" → sprawdź USED_KEYWORDS dla potwierdzenia
+        # Sprawdź słowa używane
         for keyword in self.USED_KEYWORDS:
             if keyword in search_text:
                 return "used", False
 
-        # Domyślnie: ufamy parametrowi Otomoto
-        return "used", False
+        # Parametr Otomoto: is_new=False → używane
+        if not is_new_param:
+            return "used", False
+
+        return "new", False
 
     def parse(self, url: str, dealer_short: str) -> Optional[CarData]:
         """Pobierz i sparsuj stronę ogłoszenia."""
@@ -1282,10 +1265,10 @@ class OfferParser:
                 return str(vals[0].get("label", ""))
             return ""
 
-        # ── Filtrowanie: marka ── v18: TYLKO CUPRA
+        # ── Filtrowanie: marka ──
         make = details.get("make", "").strip().lower()
-        if make and make != "cupra":
-            return None  # Nie-CUPRA → pomiń
+        if make in Config.BLOCKED_MAKES:
+            return None
 
         # ── Filtrowanie: model ──
         model_raw = get_param_value("model") or details.get("model", "")
@@ -1635,7 +1618,7 @@ class Exporter:
         # v16.3: Export ONLY vehicle_type=new (usuwa demo i używane z dashboardu)
         cars_for_export = [
             car for car in cars 
-            if car.vehicle_type == "new"
+            if car.vehicle_type in ("new", "demo") and car.has_catalog_price
         ]
         used_count = len(cars) - len(cars_for_export)
         brak_kat = sum(1 for c in cars_for_export if c.status == "BRAK_CENY_KAT")
@@ -2063,13 +2046,6 @@ class GoliathEngine:
     def run(self):
         start_time = time.time()
         logging.info("🚀 GOLIATH v9.0 ULTRA startuje!\n")
-
-        # v18: Wyczyść cache żeby wymusić pełny rescan od zera
-        if Config.FORCE_FULL_SCAN:
-            if os.path.exists(Config.CACHE_FILE):
-                os.remove(Config.CACHE_FILE)
-                logging.info(f"  🗑️ Usunięto {Config.CACHE_FILE} — wymuszony pełny rescan")
-            self.memory = SmartMemory()  # Czysta pamięć
 
         # ═════════════════════════════════════════════
         #  FAZA 1: Zbieranie linków — v16 NUCLEAR (Global + Per-dealer)
