@@ -80,7 +80,7 @@ class Config:
     # --- Filtrowanie ---
     MIN_YEAR: int = 2025          # ⚠️ NIE czytamy 2024
     MAX_MILEAGE: int = 30         # Max przebieg w km (nowe auta)
-    BLOCKED_MODELS: set = {"ateca", "cupra-ateca"}
+    BLOCKED_MODELS: set = set()  # v20: nic nie blokujemy
     BLOCKED_MAKES: set = {"seat"}
     EV_MODELS: set = {"born", "tavascan", "cupra-born", "cupra-tavascan"}
 
@@ -1177,6 +1177,8 @@ class OfferParser:
 
     # ── Słowa kluczowe: DEMO / UŻYWANE / SHORT-TERM ──
     DEMO_KEYWORDS = [
+        'short demo',  # v20: demo/spad detection
+        
         'demonstracyjn', 'demo ', ' demo', 'ex-demo', 'ex demo',
         'testow', 'jazd testow', 'auto z jazd', 'pojazd z jazd',
         'ekspozycyjn', 'wystawow', 'z ekspozycji',
@@ -1298,11 +1300,9 @@ class OfferParser:
         if year < Config.MIN_YEAR:
             return None
 
-        # ── Filtrowanie: przebieg (max 30km = nowe) ──
+        # ── Przebieg (parsowanie — filtr przeniesiony NIŻEJ po vehicle_type detection) ──
         mileage_str = get_param_value("mileage")
         mileage = int(re.sub(r'[^\d]', '', mileage_str) or 0)
-        if mileage > Config.MAX_MILEAGE:
-            return None
 
         # ── Opis (HTML → czysty tekst) ──
         description_html = ad.get("description", "")
@@ -1401,9 +1401,22 @@ class OfferParser:
         # i przebieg ≤ MAX_MILEAGE → traktujemy jako NOWE niezależnie od new_used.
         if vehicle_type == "used" and new_used != "new":
             if mileage <= Config.MAX_MILEAGE:
-                # Brak słów kluczowych "używane" + niski przebieg = nowe na koncie "używane"
                 logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → NOWE (konto używane dealera)")
                 vehicle_type = "new"
+
+        # ── v20: Mileage filter PO vehicle_type detection ──
+        # new → max 100 km (fabrycznie nowe)
+        # demo → max 50 000 km (demo/short demo/spad z gwarancją)
+        # used → skip (nie eksportujemy)
+        if vehicle_type == "used":
+            logging.debug(f"  ⛔ vehicle_type=used → skip")
+            return None
+        if vehicle_type == "new" and mileage > 100:
+            logging.debug(f"  ⛔ new + mileage {mileage}km > 100 → skip")
+            return None
+        if vehicle_type == "demo" and mileage > 50_000:
+            logging.debug(f"  ⛔ demo + mileage {mileage}km > 50000 → skip")
+            return None
 
         # ── Seller ──
         seller = ad.get("seller", {})
@@ -2068,10 +2081,11 @@ class GoliathEngine:
 
         logging.info(f"\n  📊 Per-dealer: {len(url_to_dealer)} unikalnych linków\n")
 
-        # ── 1B: Global search (pełne Otomoto) ─────────────────────────────────
-        global_links = self.collector.collect_global()
-        global_only_count = sum(1 for l in global_links if l not in url_to_dealer)
-        logging.info(f"  📊 Global: {len(global_links)} linków, w tym {global_only_count} nowych (nie w per-dealer)\n")
+        # ── 1B: Global search WYŁĄCZONY v20 ─────────────────────────────────
+        # v20: Global scan wyłączony — powoduje złe matchowanie dealerów
+        # (auta przypisywane do złych salonów). Tylko per-dealer scan.
+        global_links: set = set()
+        logging.info(f"  📊 Global scan: WYŁĄCZONY (v20 — tylko per-dealer)\n")
 
         # ── Merge: per-dealer ma priorytet, global dodaje resztę ──────────────
         seen_urls: Set[str] = set()

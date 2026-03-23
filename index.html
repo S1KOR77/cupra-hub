@@ -918,12 +918,15 @@ let mapaSort = { col: 'avg_margin', dir: 'desc' };
 let mapaYearFilter = 'all';  // 'all' | '2025' | '2026'
 let excludedFromCalc = new Set(JSON.parse(localStorage.getItem('excludedFromCalc') || '[]'));
 function saveExclusions() { localStorage.setItem('excludedFromCalc', JSON.stringify([...excludedFromCalc])); }
+let _currentDealerPanel = null; // v20: track open dealer panel
 function toggleExclusion(id, ev) {
     if (ev) ev.stopPropagation();
     if (excludedFromCalc.has(String(id))) excludedFromCalc.delete(String(id));
     else excludedFromCalc.add(String(id));
     saveExclusions();
     buildMapaRanking();
+    // v20: live update dealer panel
+    if (_currentDealerPanel) showDealerFull(_currentDealerPanel);
 }
 
 /* ---- THEMES ---- */
@@ -1736,7 +1739,7 @@ function showVehicle(id) {
 }
 
 function closeModal() {
-    document.getElementById('modalOverlay').classList.remove('open');
+    _currentDealerPanel = null; document.getElementById('modalOverlay').classList.remove('open');
 }
 document.getElementById('modalOverlay').addEventListener('click', e => {
     if (e.target === document.getElementById('modalOverlay')) closeModal();
@@ -2020,55 +2023,129 @@ document.getElementById('mapaTabs').addEventListener('click', e => {
 });
 
 function showDealerFull(dealerName) {
+    _currentDealerPanel = dealerName; // v20: track for live updates
     const vehicles = DATA.filter(v => (v.dealer_short || v.dealer) === dealerName);
-    // KPI
-    const withMargin = vehicles.filter(v => v.has_catalog_price && v.margin_pct != null);
+    
+    // ── KPIs (respecting exclusions) ──
+    const activeVehicles = vehicles.filter(v => !excludedFromCalc.has(String(v.otomoto_id)));
+    const withMargin = activeVehicles.filter(v => v.has_catalog_price && v.margin_pct != null);
     const demos = vehicles.filter(v => v.status === 'DEMO' || v.vehicle_type === 'demo');
     const avgM = withMargin.length ? withMargin.reduce((s,v)=>s+v.margin_pct,0)/withMargin.length : null;
+    const medianM = withMargin.length ? (() => { const sorted = withMargin.map(v=>v.margin_pct).sort((a,b)=>a-b); const mid = Math.floor(sorted.length/2); return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2; })() : null;
     const avgDays = vehicles.filter(v=>v.days!=null).length
-        ? Math.round(vehicles.filter(v=>v.days!=null).reduce((s,v)=>s+v.days,0)/vehicles.filter(v=>v.days!=null).length)
-        : null;
-    const models = {};
-    vehicles.forEach(v => { models[v.model] = (models[v.model]||0)+1; });
+        ? Math.round(vehicles.filter(v=>v.days!=null).reduce((s,v)=>s+v.days,0)/vehicles.filter(v=>v.days!=null).length) : null;
+    const excludedCount = vehicles.length - activeVehicles.length;
+    
+    // Model breakdown with margins
+    const modelStats = {};
+    vehicles.forEach(v => {
+        if (!modelStats[v.model]) modelStats[v.model] = { count: 0, margins: [], prices: [], days: [] };
+        modelStats[v.model].count++;
+        if (v.margin_pct != null && !excludedFromCalc.has(String(v.otomoto_id))) modelStats[v.model].margins.push(v.margin_pct);
+        if (v.sale_price) modelStats[v.model].prices.push(v.sale_price);
+        if (v.days != null) modelStats[v.model].days.push(v.days);
+    });
+    
+    // Year breakdown
+    const yearStats = {};
+    vehicles.forEach(v => { yearStats[v.year||'?'] = (yearStats[v.year||'?']||0) + 1; });
+    
+    // Freshness / turnover
     const fresh = vehicles.filter(v=>v.days!=null&&v.days<=2).length;
+    const mid = vehicles.filter(v=>v.days!=null&&v.days>2&&v.days<14).length;
     const aging = vehicles.filter(v=>v.days!=null&&v.days>=14).length;
+    const old30 = vehicles.filter(v=>v.days!=null&&v.days>=30).length;
+    
+    // Price distribution
+    const prices = vehicles.filter(v=>v.sale_price).map(v=>v.sale_price);
+    const avgPrice = prices.length ? Math.round(prices.reduce((a,b)=>a+b,0)/prices.length) : 0;
+    const minPrice = prices.length ? Math.min(...prices) : 0;
+    const maxPrice = prices.length ? Math.max(...prices) : 0;
+    
+    // Negative margin count
+    const negMargin = withMargin.filter(v=>v.margin_pct < 0).length;
+    const posMargin = withMargin.filter(v=>v.margin_pct >= 0).length;
 
     const kpiHtml = `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px">
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:var(--accent)">${vehicles.length}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Pojazdów</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-bottom:12px">
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:var(--accent)">${vehicles.length}</div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">Pojazdów${excludedCount?' <span style=color:#f87171>('+excludedCount+' wykl.)</span>':''}</div>
             </div>
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:${avgM==null?'#666':avgM>=2?'#4ade80':avgM>=0?'#fbbf24':'#f87171'}">${avgM!=null?avgM.toFixed(2)+'%':'-'}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Śr. Marża</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:${avgM==null?'#666':avgM>=2?'#4ade80':avgM>=0?'#fbbf24':'#f87171'}">${avgM!=null?avgM.toFixed(2)+'%':'-'}</div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">Śr. Marża</div>
             </div>
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:#a78bfa">${demos.length}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Demo/Spad</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:${medianM==null?'#666':medianM>=2?'#4ade80':medianM>=0?'#fbbf24':'#f87171'}">${medianM!=null?medianM.toFixed(2)+'%':'-'}</div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">Mediana</div>
             </div>
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:#60a5fa">${avgDays!=null?avgDays+'d':'-'}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Śr. Dni</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:#a78bfa">${demos.length}</div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">Demo/Spad</div>
             </div>
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:#4ade80">${fresh}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Świeże (≤2d)</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:#60a5fa">${avgDays!=null?avgDays+'d':'-'}</div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">Śr. Dni</div>
             </div>
-            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:1.4rem;font-weight:700;color:#f87171">${aging}</div>
-                <div style="font-size:0.7rem;color:var(--text-muted)">Stare (≥14d)</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center">
+                <div style="font-size:1.3rem;font-weight:700;color:#4ade80">${posMargin} <span style="font-size:0.7rem;color:#f87171">/ ${negMargin}</span></div>
+                <div style="font-size:0.65rem;color:var(--text-muted)">+ / - marża</div>
             </div>
         </div>`;
 
-    const modelsHtml = Object.entries(models).sort((a,b)=>b[1]-a[1]).map(([m,c]) =>
-        `<span style="background:rgba(255,255,255,0.06);border-radius:4px;padding:2px 8px;font-size:0.75rem;margin:2px">${m} <strong>${c}</strong></span>`
+    // ── Model breakdown table ──
+    const modelRows = Object.entries(modelStats).sort((a,b)=>b[1].count-a[1].count).map(([m, s]) => {
+        const avgMm = s.margins.length ? (s.margins.reduce((a,b)=>a+b,0)/s.margins.length) : null;
+        const avgP = s.prices.length ? Math.round(s.prices.reduce((a,b)=>a+b,0)/s.prices.length) : 0;
+        const avgD = s.days.length ? Math.round(s.days.reduce((a,b)=>a+b,0)/s.days.length) : null;
+        return `<tr>
+            <td style="font-weight:600">${m}</td>
+            <td>${s.count}</td>
+            <td style="${avgMm!=null?marginColor(avgMm):''}">${avgMm!=null?avgMm.toFixed(2)+'%':'-'}</td>
+            <td>${avgP?fmt(avgP):'-'}</td>
+            <td>${avgD!=null?avgD+'d':'-'}</td>
+        </tr>`;
+    }).join('');
+
+    // ── Year pills ──
+    const yearPills = Object.entries(yearStats).sort((a,b)=>b[0]-a[0]).map(([y,c]) =>
+        `<span style="background:rgba(255,255,255,0.06);border-radius:4px;padding:2px 8px;font-size:0.75rem;margin:2px">${y}: <strong>${c}</strong></span>`
     ).join('');
 
+    // ── Freshness bar ──
+    const total = fresh + mid + aging;
+    const freshPct = total ? Math.round(fresh/total*100) : 0;
+    const midPct = total ? Math.round(mid/total*100) : 0;
+    const agingPct = total ? 100-freshPct-midPct : 0;
+    const freshnessBar = total ? `
+        <div style="margin:8px 0">
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:4px">Rotacja magazynu</div>
+            <div style="display:flex;height:16px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.05)">
+                <div style="width:${freshPct}%;background:#4ade80" title="Świeże ≤2d: ${fresh}"></div>
+                <div style="width:${midPct}%;background:#fbbf24" title="3-13d: ${mid}"></div>
+                <div style="width:${agingPct}%;background:#f87171" title="≥14d: ${aging}"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-muted);margin-top:2px">
+                <span>🟢 ≤2d: ${fresh}</span><span>🟡 3-13d: ${mid}</span><span>🔴 ≥14d: ${aging}${old30?' (30d+: '+old30+')':''}</span>
+            </div>
+        </div>
+    ` : '';
+
+    // ── Price range ──
+    const priceInfo = prices.length ? `
+        <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-muted);margin:6px 0;padding:6px;background:rgba(255,255,255,0.02);border-radius:6px">
+            <span>💰 Śr. cena: <strong style="color:var(--text)">${fmt(avgPrice)}</strong></span>
+            <span>Min: <strong>${fmt(minPrice)}</strong></span>
+            <span>Max: <strong>${fmt(maxPrice)}</strong></span>
+        </div>` : '';
+
+    // ── Vehicle table ──
     const vehicleRows = vehicles.map(v => {
         const mg = getMargin(v);
         const dm = getDisplayMargin(mg);
         const isExcl = excludedFromCalc.has(String(v.otomoto_id));
+        const mileageStr = v.mileage ? v.mileage.toLocaleString('pl') + ' km' : '-';
         const exclBtn = `<button onclick="toggleExclusion('${v.otomoto_id}',event);this.closest('tr').classList.toggle('excl-row',excludedFromCalc.has('${v.otomoto_id}'));this.textContent=excludedFromCalc.has('${v.otomoto_id}')?'⊘':'○'" 
             title="${isExcl?'Przywróć do liczenia':'Wyklucz z liczenia marży'}"
             style="background:none;border:1px solid ${isExcl?'#f87171':'rgba(255,255,255,0.15)'};color:${isExcl?'#f87171':'#666'};border-radius:4px;padding:1px 5px;cursor:pointer;font-size:0.8rem">${isExcl?'⊘':'○'}</button>`;
@@ -2076,7 +2153,9 @@ function showDealerFull(dealerName) {
             <td>${v.model}</td>
             <td>${v.year||'-'}</td>
             <td>${v.sale_price ? fmt(v.sale_price) : '-'}</td>
+            <td>${v.catalog_price ? fmt(v.catalog_price) : '-'}</td>
             <td style="${dm!=null?marginColor(dm):''}">${dm!=null?dm.toFixed(2)+'%':'-'}</td>
+            <td>${mileageStr}</td>
             <td>${daysBadge(v.days)}</td>
             <td>${statusBadge(v.status)}</td>
             <td onclick="event.stopPropagation()">${exclBtn}</td>
@@ -2087,17 +2166,29 @@ function showDealerFull(dealerName) {
         <button class="modal-close" onclick="closeModal()">&times;</button>
         <div class="modal-title">${dealerName}</div>
         ${kpiHtml}
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px">${modelsHtml}</div>
-        <div class="dealer-mini-modal">
-            <table class="dealer-mini-table">
-                <thead><tr>
-                    <th>Model</th><th>Rok</th><th>Cena</th><th>Marża %</th><th>Dni</th><th>Status</th>
-                    <th title="Wyklucz z liczenia marży w Mapie Rynkowej" style="color:#666;font-size:0.7rem">⊘ Wyklucz</th>
-                </tr></thead>
-                <tbody>${vehicleRows}</tbody>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">${yearPills}</div>
+        ${freshnessBar}
+        ${priceInfo}
+        <details style="margin:8px 0" open>
+            <summary style="cursor:pointer;font-size:0.8rem;color:var(--accent);font-weight:600">📊 Model Breakdown</summary>
+            <table class="dealer-mini-table" style="margin-top:6px">
+                <thead><tr><th>Model</th><th>#</th><th>Śr. Marża</th><th>Śr. Cena</th><th>Śr. Dni</th></tr></thead>
+                <tbody>${modelRows}</tbody>
             </table>
-        </div>
-        <button class="btn" style="margin-top:16px" onclick="filterByDealer('${dealerName.replace(/'/g,"\'")}');closeModal()">Pokaż w Magazynie</button>
+        </details>
+        <details style="margin:8px 0" open>
+            <summary style="cursor:pointer;font-size:0.8rem;color:var(--accent);font-weight:600">🚗 Pełny Magazyn (${vehicles.length})</summary>
+            <div class="dealer-mini-modal">
+                <table class="dealer-mini-table" style="margin-top:6px">
+                    <thead><tr>
+                        <th>Model</th><th>Rok</th><th>Cena</th><th>Kat.</th><th>Marża %</th><th>Przebieg</th><th>Dni</th><th>Status</th>
+                        <th title="Wyklucz z liczenia marży w Mapie Rynkowej" style="color:#666;font-size:0.7rem">⊘</th>
+                    </tr></thead>
+                    <tbody>${vehicleRows}</tbody>
+                </table>
+            </div>
+        </details>
+        <button class="btn" style="margin-top:12px" onclick="filterByDealer('${dealerName.replace(/'/g,"\\'")}');closeModal()">Pokaż w Magazynie</button>
     `;
     document.getElementById('modalOverlay').classList.add('open');
 }
