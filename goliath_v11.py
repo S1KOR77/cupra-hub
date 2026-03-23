@@ -1177,20 +1177,37 @@ class OfferParser:
 
     # ── Słowa kluczowe: DEMO / UŻYWANE / SHORT-TERM ──
     DEMO_KEYWORDS = [
-        'short demo',  # v20: demo/spad detection
-        
-        'demonstracyjn', 'demo ', ' demo', 'ex-demo', 'ex demo',
-        'testow', 'jazd testow', 'auto z jazd', 'pojazd z jazd',
-        'ekspozycyjn', 'wystawow', 'z ekspozycji',
+        # Explicit demo labels
+        'short demo', 'ex-demo', 'ex demo',
+        'demonstracyjn',
+        'demo ',   # "auto demo " — space after to avoid matching "demonstracja"
+        ' demo',   # " demo" — space before
+
+        # Test/expo cars
+        'jazd testow',          # "auto z jazdy testowej"
+        'auto z jazd',          # "auto z jazdy"
+        'pojazd z jazd',        # "pojazd z jazdy"
+        'ekspozycyjn',          # "ekspozycyjny"
+        'wystawow',             # "wystawowy"
+        'z ekspozycji',         # "auto z ekspozycji"
+
+        # Short-term / pre-launch
         'short term', 'short-term', 'krótkoterminow',
         'przedpremierow',
-        'wyprzeda',                       # "Wyprzedaż DEMO" (KRAKÓW)
-        'zarejestrowany na dealer',       # registered to dealer = demo (AUTO GAZDA)
+
+        # Dealer-registered (used accounts with new stock)
+        'zarejestrowany na dealer',
         'zarejestrowane na dealer',
-        'samochód z salonu',              # exhibition car
-        'uruchomioną gwarancją',          # spad z gwarancją (warranty started = registered/demo)
-        'uruchomiona gwarancja',          # wariant pisowni
-        'z uruchomioną',                  # skrót: z uruchomioną gwarancją
+
+        # WARRANTY STARTED = spad / demo (CRITICAL for Motorpol etc.)
+        'uruchomioną gwarancją',
+        'uruchomiona gwarancja',
+        'z uruchomioną',
+
+        # REMOVED — false positives on new cars:
+        # 'wyprzeda'      → matches "Wyprzedaż rocznika!" in every new car ad
+        # 'samochód z salonu' → matches "fabrycznie nowy samochód z salonu"
+        # 'testow'        → matches "jazda testowa" (test drive offer, not demo car)
     ]
 
     USED_KEYWORDS = [
