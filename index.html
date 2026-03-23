@@ -916,6 +916,15 @@ let salonSort = { col: 'avg_margin', dir: 'desc' };
 let salonTab = 'all';
 let mapaSort = { col: 'avg_margin', dir: 'desc' };
 let mapaYearFilter = 'all';  // 'all' | '2025' | '2026'
+let excludedFromCalc = new Set(JSON.parse(localStorage.getItem('excludedFromCalc') || '[]'));
+function saveExclusions() { localStorage.setItem('excludedFromCalc', JSON.stringify([...excludedFromCalc])); }
+function toggleExclusion(id, ev) {
+    if (ev) ev.stopPropagation();
+    if (excludedFromCalc.has(String(id))) excludedFromCalc.delete(String(id));
+    else excludedFromCalc.add(String(id));
+    saveExclusions();
+    buildMapaRanking();
+}
 
 /* ---- THEMES ---- */
 const THEMES = {
@@ -1932,7 +1941,8 @@ function buildMapa() {
 }
 
 function buildMapaRanking() {
-    let valid = DATA.filter(v => v.margin_pct != null && v.status !== 'ANOMALIA' && v.status !== 'BRAK_CENY_KAT');
+    // Uwzględnij nowe + demo, pomiń BRAK_CENY_KAT
+    let valid = DATA.filter(v => v.margin_pct != null && v.status !== 'BRAK_CENY_KAT' && v.has_catalog_price);
     if (mapaYearFilter !== 'all') {
         const yr = parseInt(mapaYearFilter);
         valid = valid.filter(v => v.year === yr);
@@ -1945,14 +1955,18 @@ function buildMapaRanking() {
         grouped[d].models[v.model] = (grouped[d].models[v.model] || 0) + 1;
     });
     let rows = Object.entries(grouped).map(([dealer, data]) => {
-        const margins = data.items.map(v => v.margin_pct);
+        // Wyklucz pojazdy z excludedFromCalc z liczenia marży
+        const activeItems = data.items.filter(v => !excludedFromCalc.has(String(v.otomoto_id)));
+        const margins = activeItems.map(v => v.margin_pct).filter(m => m != null);
         const dominant = Object.entries(data.models).sort((a,b) => b[1] - a[1])[0];
+        const excCount = data.items.length - activeItems.length;
         return {
             dealer,
             count: data.items.length,
-            avg_margin: margins.reduce((a,b) => a+b, 0) / margins.length,
-            min_margin: Math.min(...margins),
-            max_margin: Math.max(...margins),
+            excCount,
+            avg_margin: margins.length ? margins.reduce((a,b) => a+b, 0) / margins.length : null,
+            min_margin: margins.length ? Math.min(...margins) : null,
+            max_margin: margins.length ? Math.max(...margins) : null,
             dominant: dominant ? dominant[0] + ' (' + dominant[1] + ')' : '-'
         };
     });
@@ -1962,14 +1976,18 @@ function buildMapaRanking() {
         return ((a[mapaSort.col]||0) - (b[mapaSort.col]||0)) * m;
     });
     document.getElementById('mapaBody').innerHTML = rows.map((r, i) => {
-        const bgClass = r.avg_margin >= 3 ? 'rgba(74,222,128,0.03)' : r.avg_margin >= 1 ? 'rgba(251,191,36,0.03)' : 'rgba(248,113,113,0.03)';
-        return `<tr style="cursor:pointer;background:${bgClass}" onclick="showDealerMini('${r.dealer.replace(/'/g,"\\'")}')">
+        const avg = r.avg_margin;
+        const bg = avg == null ? 'transparent' : avg >= 3 ? 'rgba(74,222,128,0.03)' : avg >= 1 ? 'rgba(251,191,36,0.03)' : 'rgba(248,113,113,0.03)';
+        const excBadge = r.excCount > 0
+            ? `<span style="font-size:0.62rem;background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;margin-left:5px">-${r.excCount} wykluczone</span>`
+            : '';
+        return `<tr style="cursor:pointer;background:${bg}" onclick="showDealerFull('${r.dealer.replace(/'/g,"\'")}')">
             <td style="color:var(--text-muted)">${i+1}</td>
-            <td style="font-weight:600">${r.dealer}</td>
+            <td style="font-weight:600">${r.dealer}${excBadge}</td>
             <td>${r.count}</td>
-            <td><span class="badge ${marginColorClass(r.avg_margin)}">${r.avg_margin.toFixed(2)}%</span></td>
-            <td style="${marginColor(r.min_margin)}">${r.min_margin.toFixed(2)}%</td>
-            <td style="${marginColor(r.max_margin)}">${r.max_margin.toFixed(2)}%</td>
+            <td>${avg != null ? `<span class="badge ${marginColorClass(avg)}">${avg.toFixed(2)}%</span>` : '-'}</td>
+            <td style="${r.min_margin != null ? marginColor(r.min_margin) : ''}">${r.min_margin != null ? r.min_margin.toFixed(2)+'%' : '-'}</td>
+            <td style="${r.max_margin != null ? marginColor(r.max_margin) : ''}">${r.max_margin != null ? r.max_margin.toFixed(2)+'%' : '-'}</td>
             <td>${r.dominant}</td>
         </tr>`;
     }).join('');
@@ -2001,31 +2019,92 @@ document.getElementById('mapaTabs').addEventListener('click', e => {
     if (mtab === 'dominance') buildMapaDominanceChart();
 });
 
-function showDealerMini(dealerName) {
+function showDealerFull(dealerName) {
     const vehicles = DATA.filter(v => (v.dealer_short || v.dealer) === dealerName);
+    // KPI
+    const withMargin = vehicles.filter(v => v.has_catalog_price && v.margin_pct != null);
+    const demos = vehicles.filter(v => v.status === 'DEMO' || v.vehicle_type === 'demo');
+    const avgM = withMargin.length ? withMargin.reduce((s,v)=>s+v.margin_pct,0)/withMargin.length : null;
+    const avgDays = vehicles.filter(v=>v.days!=null).length
+        ? Math.round(vehicles.filter(v=>v.days!=null).reduce((s,v)=>s+v.days,0)/vehicles.filter(v=>v.days!=null).length)
+        : null;
+    const models = {};
+    vehicles.forEach(v => { models[v.model] = (models[v.model]||0)+1; });
+    const fresh = vehicles.filter(v=>v.days!=null&&v.days<=2).length;
+    const aging = vehicles.filter(v=>v.days!=null&&v.days>=14).length;
+
+    const kpiHtml = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px">
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:var(--accent)">${vehicles.length}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Pojazdów</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:${avgM==null?'#666':avgM>=2?'#4ade80':avgM>=0?'#fbbf24':'#f87171'}">${avgM!=null?avgM.toFixed(2)+'%':'-'}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Śr. Marża</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:#a78bfa">${demos.length}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Demo/Spad</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:#60a5fa">${avgDays!=null?avgDays+'d':'-'}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Śr. Dni</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:#4ade80">${fresh}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Świeże (≤2d)</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:1.4rem;font-weight:700;color:#f87171">${aging}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">Stare (≥14d)</div>
+            </div>
+        </div>`;
+
+    const modelsHtml = Object.entries(models).sort((a,b)=>b[1]-a[1]).map(([m,c]) =>
+        `<span style="background:rgba(255,255,255,0.06);border-radius:4px;padding:2px 8px;font-size:0.75rem;margin:2px">${m} <strong>${c}</strong></span>`
+    ).join('');
+
+    const vehicleRows = vehicles.map(v => {
+        const mg = getMargin(v);
+        const dm = getDisplayMargin(mg);
+        const isExcl = excludedFromCalc.has(String(v.otomoto_id));
+        const exclBtn = `<button onclick="toggleExclusion('${v.otomoto_id}',event);this.closest('tr').classList.toggle('excl-row',excludedFromCalc.has('${v.otomoto_id}'));this.textContent=excludedFromCalc.has('${v.otomoto_id}')?'⊘':'○'" 
+            title="${isExcl?'Przywróć do liczenia':'Wyklucz z liczenia marży'}"
+            style="background:none;border:1px solid ${isExcl?'#f87171':'rgba(255,255,255,0.15)'};color:${isExcl?'#f87171':'#666'};border-radius:4px;padding:1px 5px;cursor:pointer;font-size:0.8rem">${isExcl?'⊘':'○'}</button>`;
+        return `<tr onclick="closeModal();showVehicle('${v.otomoto_id}')" style="cursor:pointer${isExcl?';opacity:0.4':''}" class="${isExcl?'excl-row':''}">
+            <td>${v.model}</td>
+            <td>${v.year||'-'}</td>
+            <td>${v.sale_price ? fmt(v.sale_price) : '-'}</td>
+            <td style="${dm!=null?marginColor(dm):''}">${dm!=null?dm.toFixed(2)+'%':'-'}</td>
+            <td>${daysBadge(v.days)}</td>
+            <td>${statusBadge(v.status)}</td>
+            <td onclick="event.stopPropagation()">${exclBtn}</td>
+        </tr>`;
+    }).join('');
+
     document.getElementById('modalContent').innerHTML = `
         <button class="modal-close" onclick="closeModal()">&times;</button>
-        <div class="modal-title">${dealerName} — ${vehicles.length} pojazdów</div>
+        <div class="modal-title">${dealerName}</div>
+        ${kpiHtml}
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px">${modelsHtml}</div>
         <div class="dealer-mini-modal">
             <table class="dealer-mini-table">
                 <thead><tr>
                     <th>Model</th><th>Rok</th><th>Cena</th><th>Marża %</th><th>Dni</th><th>Status</th>
+                    <th title="Wyklucz z liczenia marży w Mapie Rynkowej" style="color:#666;font-size:0.7rem">⊘ Wyklucz</th>
                 </tr></thead>
-                <tbody>${vehicles.map(v => {
-                    const mg = getMargin(v);
-                    return `<tr onclick="closeModal();showVehicle('${v.otomoto_id}')" style="cursor:pointer">
-                        <td>${v.model}</td><td>${v.year||'-'}</td>
-                        <td>${v.sale_price ? fmt(v.sale_price) : '-'}</td>
-                        <td style="${marginColor(getDisplayMargin(mg))}">${mg.margin_pct != null ? getDisplayMargin(mg).toFixed(2)+'%' : '-'}</td>
-                        <td>${daysBadge(v.days)}</td><td>${statusBadge(v.status)}</td>
-                    </tr>`;
-                }).join('')}</tbody>
+                <tbody>${vehicleRows}</tbody>
             </table>
         </div>
-        <button class="btn" style="margin-top:16px" onclick="filterByDealer('${dealerName.replace(/'/g,"\\'")}');closeModal()">Pokaż w Magazynie</button>
+        <button class="btn" style="margin-top:16px" onclick="filterByDealer('${dealerName.replace(/'/g,"\'")}');closeModal()">Pokaż w Magazynie</button>
     `;
     document.getElementById('modalOverlay').classList.add('open');
 }
+
+// Kompatybilność wstecz
+function showDealerMini(n) { showDealerFull(n); }
+
 
 function buildMapaDominanceChart() {
     if (chartInstances.dominance) { chartInstances.dominance.destroy(); }
