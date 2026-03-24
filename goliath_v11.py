@@ -1658,11 +1658,11 @@ class Exporter:
 
     @staticmethod
     def to_json(cars: List[CarData], filepath: str):
-        # Filtruj TYLKO faktycznie używane auta — BRAK_CENY_KAT to nowe auta bez dopasowania cennika
-        # v16.3: Export ONLY vehicle_type=new (usuwa demo i używane z dashboardu)
+        # v_fix: Eksportuj WSZYSTKIE new/demo — BRAK_CENY_KAT nie może blokować wyświetlania na dashboardzie
+        # Usunięto warunek "and car.has_catalog_price" który powodował że ~30+ aut znikało z data.json
         cars_for_export = [
             car for car in cars 
-            if car.vehicle_type in ("new", "demo") and car.has_catalog_price
+            if car.vehicle_type in ("new", "demo")
         ]
         used_count = len(cars) - len(cars_for_export)
         brak_kat = sum(1 for c in cars_for_export if c.status == "BRAK_CENY_KAT")
