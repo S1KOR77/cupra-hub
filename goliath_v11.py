@@ -1420,18 +1420,19 @@ class OfferParser:
         # 2. Przebieg 101-50000km + rok ≥2025 → DEMO (demo/short-term/spad gwarancyjny)
         # 3. Powyżej → zostaje "used" → skip
         #
-        # UWAGA: _detect_vehicle_type() już sprawdził USED_KEYWORDS (używane/poleasingowe)
-        # i DEMO_KEYWORDS. Jeśli tu docieramy z vehicle_type="used", to znaczy że:
-        # - Opis NIE zawiera słów demo/ekspozycyjny/uruchomiona gwarancja
-        # - Opis NIE zawiera "używane/poleasingowe" (bo USED_KEYWORDS matchują wcześniej)
-        # - new_used param mówi "used" (konto dealera typu "używane")
-        # Więc to musi być auto dealerskie bez odpowiednich słów kluczowych → demo.
-        if vehicle_type == "used" and new_used != "new":
+        # UWAGA: _detect_vehicle_type() może dać false-positive "used" gdy opis zawiera
+        # "nie używany" / "nieużywany" (regex "używan" pasuje do OBIE formy!).
+        # Dodatkowo: dealer może mieć konto "używane" ale sprzedawać fabrycznie nowe auta.
+        # FIX v21: Heurystyka mileage działa BEZ WZGLĘDU na new_used param.
+        #   1. vehicle_type=used + mileage ≤ 100 km → reklasyfikuj jako NOWE
+        #   2. vehicle_type=used + mileage 101-50000 km + rok ≥ MIN_YEAR → DEMO
+        #   3. vehicle_type=used + mileage > 50000 km → zostaje "used" → skip
+        if vehicle_type == "used":
             if mileage <= 100:
-                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km → NOWE (konto używane dealera)")
+                logging.debug(f"  🔄 new_used='{new_used}' przebieg {mileage}km → NOWE (fix: mileage override)")
                 vehicle_type = "new"
             elif mileage <= 50_000 and year >= Config.MIN_YEAR:
-                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → DEMO (konto używane dealera)")
+                logging.debug(f"  🔄 new_used='{new_used}' przebieg {mileage}km, rok {year} → DEMO (fix: mileage override)")
                 vehicle_type = "demo"
                 is_demo = True
 
