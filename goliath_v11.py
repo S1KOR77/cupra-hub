@@ -16,7 +16,7 @@
 ║   ✦ Deep JSON Mining (__NEXT_DATA__ → full description, ALL parameters)          ║
 ║   ✦ Smart Memory — nie skanuje aut które już zna (cache.json)                    ║
 ║   ✦ Precision Margin Calculator z tabelą rabatów 2025/2026                       ║
-║   ✦ Filtr: CUPRA only · ≥2025 · ≤30km · no SEAT/Ateca                           ║
+║   ✦ Filtr: CUPRA only · ≥2025 · new≤100km · demo≤50kkm · no SEAT               ║
 ║   ✦ Born & Tavascan → ELEKTRYK_OK (osobna logika marży TBD)                     ║
 ║   ✦ Incremental Excel (aktualizuje istniejący plik, nie nadpisuje)               ║
 ║   ✦ Multi-sheet XLSX: Inventory · Podsumowanie · Anomalie                        ║
@@ -1411,15 +1411,29 @@ class OfferParser:
                 break
         
         # ── Dodatkowa heurystyka: NIE ufaj parametrowi new_used dla kont "używane" ──
-        # v16.2 FIX: Dealerzy (np. Motorpol, AutoGazda) mają konta "używane" na Otomoto
-        # gdzie wstawiają FABRYCZNIE NOWE auta z 1km. Otomoto ustawia new_used="used"
+        # v21 FIX: Dealerzy (np. Motorpol, AutoGazda) mają konta "używane" na Otomoto
+        # gdzie wstawiają FABRYCZNIE NOWE i DEMO auta. Otomoto ustawia new_used="used"
         # przez co _detect_vehicle_type() zwraca "used" → auto ukryte z dashboardu.
-        # Jeśli auto nie ma słów "używane/poleasingowe/itp." w tytule/opisie
-        # i przebieg ≤ MAX_MILEAGE → traktujemy jako NOWE niezależnie od new_used.
+        #
+        # Logika:
+        # 1. Przebieg ≤ 100km → NOWE (fabrycznie nowe z placu)
+        # 2. Przebieg 101-50000km + rok ≥2025 → DEMO (demo/short-term/spad gwarancyjny)
+        # 3. Powyżej → zostaje "used" → skip
+        #
+        # UWAGA: _detect_vehicle_type() już sprawdził USED_KEYWORDS (używane/poleasingowe)
+        # i DEMO_KEYWORDS. Jeśli tu docieramy z vehicle_type="used", to znaczy że:
+        # - Opis NIE zawiera słów demo/ekspozycyjny/uruchomiona gwarancja
+        # - Opis NIE zawiera "używane/poleasingowe" (bo USED_KEYWORDS matchują wcześniej)
+        # - new_used param mówi "used" (konto dealera typu "używane")
+        # Więc to musi być auto dealerskie bez odpowiednich słów kluczowych → demo.
         if vehicle_type == "used" and new_used != "new":
-            if mileage <= Config.MAX_MILEAGE:
-                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → NOWE (konto używane dealera)")
+            if mileage <= 100:
+                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km → NOWE (konto używane dealera)")
                 vehicle_type = "new"
+            elif mileage <= 50_000 and year >= Config.MIN_YEAR:
+                logging.debug(f"  🔄 new_used='{new_used}' ale przebieg {mileage}km, rok {year} → DEMO (konto używane dealera)")
+                vehicle_type = "demo"
+                is_demo = True
 
         # ── v20: Mileage filter PO vehicle_type detection ──
         # new → max 100 km (fabrycznie nowe)
