@@ -434,10 +434,11 @@ class SmartMemory:
     def should_skip(self, url: str) -> bool:
         """
         Czy pominąć to ogłoszenie?
-        Pomijamy TYLKO gdy:
+        Pomijamy gdy:
           - Jest w cache
-          - Ma status OK lub ELEKTRYK_OK
-          - Marża w bezpiecznym zakresie
+          - Status to OK / DEMO / BRAK_CENY_KAT / ELEKTRYK_OK
+          - Zostało zeskanowane w ciągu ostatnich 48h (TTL)
+          - Anomalie ZAWSZE są ponownie skanowane
         """
         if url not in self.cache:
             return False
@@ -446,20 +447,30 @@ class SmartMemory:
         status = entry.get("status", "")
         margin = entry.get("margin_pct", None)
 
-        # Zawsze skanuj ponownie jeśli status nie jest OK (strict: only OK)
-        if status != "OK":
+        # Anomalie zawsze rescan
+        if status == "ANOMALIA" or not status:
             return False
 
-        # v10.0: MEGA FIX — zawsze RESCAN auta z anomaliami marży
-        if margin is not None:
-            # Marża >6% = zawsze RESCAN (rabat może być błędny)
-            # Marża <-0.5% = zawsze RESCAN (demo/używane do sprawdzenia)
-            if margin > 6.0 or margin < -0.5:
-                return False  # Force RESCAN
-            # Marża w zakresie [-0.5%, 6.0%] = OK, pomiń
-            if not (Config.CACHE_OK_MARGIN_MIN <= margin <= Config.CACHE_OK_MARGIN_MAX):
-                return False
+        # Sprawdź TTL — jeśli starsze niż 48h, rescan
+        scraped_at = entry.get("scraped_at", "")
+        if scraped_at:
+            try:
+                scanned = datetime.strptime(scraped_at, "%Y-%m-%d %H:%M")
+                age_hours = (datetime.now() - scanned).total_seconds() / 3600
+                if age_hours > 48:
+                    return False  # Stale — rescan
+            except Exception:
+                pass
 
+        # Dla OK: sprawdź też marżę
+        if status == "OK":
+            if margin is not None:
+                if margin > 6.0 or margin < -0.5:
+                    return False
+                if not (Config.CACHE_OK_MARGIN_MIN <= margin <= Config.CACHE_OK_MARGIN_MAX):
+                    return False
+
+        # OK, DEMO, BRAK_CENY_KAT, ELEKTRYK_OK — skip jeśli świeże
         return True
 
     def get_first_seen(self, url: str) -> str:
@@ -1658,19 +1669,30 @@ class Exporter:
     EV_FILL = PatternFill(start_color="DAEEF3", end_color="DAEEF3", fill_type="solid") if HAS_XLSX else None
 
     @staticmethod
-    def to_json(cars: List[CarData], filepath: str):
+    def to_json(cars: List[CarData], filepath: str, removed_count: int = 0):
         # v_fix: Eksportuj WSZYSTKIE new/demo — BRAK_CENY_KAT nie może blokować wyświetlania na dashboardzie
-        # Usunięto warunek "and car.has_catalog_price" który powodował że ~30+ aut znikało z data.json
         cars_for_export = [
             car for car in cars 
             if car.vehicle_type in ("new", "demo")
         ]
         used_count = len(cars) - len(cars_for_export)
         brak_kat = sum(1 for c in cars_for_export if c.status == "BRAK_CENY_KAT")
-        # Export as clean array (dashboard expects list, not object)
+        new_count = sum(1 for c in cars_for_export if c.vehicle_type == "new")
+        demo_count = sum(1 for c in cars_for_export if c.vehicle_type == "demo")
         cars_data = [car.to_dict() for car in cars_for_export]
+        # Wrap with metadata so website shows correct last-scan time
+        output = {
+            "meta": {
+                "scrape_run_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "total": len(cars_for_export),
+                "new": new_count,
+                "demo": demo_count,
+                "removed": removed_count,
+            },
+            "cars": cars_data,
+        }
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(cars_data, f, ensure_ascii=False, indent=2)
+            json.dump(output, f, ensure_ascii=False, indent=2)
         logging.info(f"  JSON -> {filepath} ({len(cars_for_export)} rekordow, filtr: {used_count} używanych, w tym {brak_kat} bez ceny kat.)")
 
     @staticmethod
@@ -2377,7 +2399,7 @@ class GoliathEngine:
 
         # Export
         if final_results:
-            Exporter.to_json(final_results, Config.OUTPUT_JSON)
+            Exporter.to_json(final_results, Config.OUTPUT_JSON, removed_count=self.stats["removed_listings"])
             Exporter.to_xlsx(final_results, Config.OUTPUT_XLSX)
             self.memory.save(final_results)
         else:

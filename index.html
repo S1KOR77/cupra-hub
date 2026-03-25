@@ -909,6 +909,7 @@ const EMBEDDED_DATA = [];
    ============================================================ */
 
 let DATA = [];
+let META = {};
 let FILTERED = [];
 let EDITED_PRICES = {};
 let DISCOUNTS = [];
@@ -1269,7 +1270,14 @@ async function loadData() {
             console.log('ℹ️ data.json niedostępny, używam danych wbudowanych');
         }
         
-        DATA = dataToLoad;
+        // Handle both old (array) and new ({meta, cars}) format
+        if (Array.isArray(dataToLoad)) {
+            DATA = dataToLoad;
+            META = {};
+        } else {
+            META = dataToLoad.meta || {};
+            DATA = dataToLoad.cars || [];
+        }
         DATA.forEach(v => {
             v.days = daysBetween(v.first_seen);
             if (!v.dealer_short) v.dealer_short = v.dealer ? v.dealer.substring(0, 25) : '-';
@@ -1322,11 +1330,17 @@ async function loadData() {
         }
         const savedTheme = localStorage.getItem('cupra_theme');
         if (savedTheme && THEMES[savedTheme]) applyTheme(savedTheme);
-        // Sync time
+        // Sync time — use scrape_run_at from meta if available
         if (DATA.length) {
-            const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
-            const syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
-            document.getElementById('syncTime').textContent = `${syncText} (${dataSource})`;
+            let syncText;
+            if (META.scrape_run_at) {
+                syncText = new Date(META.scrape_run_at).toLocaleString('pl-PL');
+            } else {
+                const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
+                syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
+            }
+            const removedInfo = (META.removed && META.removed > 0) ? ` | 🗑️ ${META.removed} usuniętych` : '';
+            document.getElementById('syncTime').textContent = `${syncText}${removedInfo} (${dataSource})`;
         }
         FILTERED = [...DATA];
         lastDataHash = hashData(DATA);
@@ -2951,16 +2965,28 @@ async function checkForDataUpdates() {
             console.log('✅ Wykryto nowe dane! Soft refresh...');
             showToast('🔄 Nowe dane ze scrapera! Odświeżam...', 2000);
             // Soft refresh — bez pełnego reload strony
-            DATA = freshData;
+            if (Array.isArray(freshData)) {
+                DATA = freshData;
+                META = {};
+            } else {
+                META = freshData.meta || {};
+                DATA = freshData.cars || [];
+            }
             DATA.forEach(v => {
                 v.days = daysBetween(v.first_seen);
                 if (!v.dealer_short) v.dealer_short = v.dealer ? v.dealer.substring(0, 25) : '-';
             });
             // Update sync time
             if (DATA.length) {
-                const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
-                const syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
-                document.getElementById('syncTime').textContent = `${syncText} (📡 live)`;
+                let syncText;
+                if (META.scrape_run_at) {
+                    syncText = new Date(META.scrape_run_at).toLocaleString('pl-PL');
+                } else {
+                    const latest = DATA.reduce((a,b) => (a.scraped_at||'') > (b.scraped_at||'') ? a : b);
+                    syncText = latest.scraped_at ? new Date(latest.scraped_at).toLocaleString('pl-PL') : '-';
+                }
+                const removedInfo = (META.removed && META.removed > 0) ? ` | 🗑️ ${META.removed} usuniętych` : '';
+                document.getElementById('syncTime').textContent = `${syncText}${removedInfo} (📡 live)`;
             }
             FILTERED = [...DATA];
             lastDataHash = currentHash;
