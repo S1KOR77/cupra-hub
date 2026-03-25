@@ -783,6 +783,12 @@ td .badge-edited { margin-left: 4px; font-size: 0.55rem; vertical-align: middle;
             <div class="tab" data-myear="2025">2025</div>
             <div class="tab" data-myear="2026">2026</div>
         </div>
+        <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;margin-left:8px">TYP:</span>
+        <div class="tabs" id="mapaTypeTabs" style="margin:0">
+            <div class="tab active" data-mtype="all">Wszystkie</div>
+            <div class="tab" data-mtype="new">Nowe</div>
+            <div class="tab" data-mtype="demo">Demo</div>
+        </div>
     </div>
     <div id="mapaRanking">
         <div class="table-wrap">
@@ -916,6 +922,7 @@ let salonSort = { col: 'avg_margin', dir: 'desc' };
 let salonTab = 'all';
 let mapaSort = { col: 'avg_margin', dir: 'desc' };
 let mapaYearFilter = 'all';  // 'all' | '2025' | '2026'
+let mapaTypeFilter = 'all';  // 'all' | 'new' | 'demo'
 let excludedFromCalc = new Set(JSON.parse(localStorage.getItem('excludedFromCalc') || '[]'));
 function saveExclusions() { localStorage.setItem('excludedFromCalc', JSON.stringify([...excludedFromCalc])); }
 let _currentDealerPanel = null; // v20: track open dealer panel
@@ -1950,6 +1957,9 @@ function buildMapaRanking() {
         const yr = parseInt(mapaYearFilter);
         valid = valid.filter(v => v.year === yr);
     }
+    if (mapaTypeFilter !== 'all') {
+        valid = valid.filter(v => mapaTypeFilter === 'demo' ? v.is_demo : !v.is_demo);
+    }
     const grouped = {};
     valid.forEach(v => {
         const d = v.dealer_short || v.dealer || '-';
@@ -2009,6 +2019,14 @@ document.getElementById('mapaYearTabs').addEventListener('click', e => {
     if (!tab || !tab.dataset.myear) return;
     mapaYearFilter = tab.dataset.myear;
     document.querySelectorAll('#mapaYearTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.myear === mapaYearFilter));
+    buildMapaRanking();
+});
+
+document.getElementById('mapaTypeTabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab || !tab.dataset.mtype) return;
+    mapaTypeFilter = tab.dataset.mtype;
+    document.querySelectorAll('#mapaTypeTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.mtype === mapaTypeFilter));
     buildMapaRanking();
 });
 

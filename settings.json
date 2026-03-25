@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "last_updated": "2026-03-20",
+  "last_updated": "2026-03-25",
   "valid_from": "2026-03-01",
   "valid_to": "2026-04-30",
   "margin_config": {
@@ -136,6 +136,18 @@
       "amount": 10000,
       "name": "Wsparcie 10 000 zł + finansowanie standardowe",
       "type": "standardowe",
+      "active": true
+    },
+    {
+      "id": "formentor_vz_2026_benzyna_std",
+      "model": "formentor",
+      "year": 2026,
+      "fuel": "benzyna",
+      "variant": "VZ KUDC/KUGC",
+      "amount": 25000,
+      "name": "Wsparcie 25 000 zł + fin. standardowe (Formentor VZ 333KM)",
+      "type": "standardowe",
+      "is_vz": true,
       "active": true
     },
     {
