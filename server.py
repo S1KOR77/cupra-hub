@@ -8,6 +8,8 @@ import threading
 import time
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get('PORT', 8080))
@@ -308,10 +310,24 @@ def auto_start_scraper():
 
 
 if __name__ == '__main__':
-    print(f'[server] CUPRA Hub v2.4 — port {PORT}')
+    print(f'[server] CUPRA Hub v2.5 — port {PORT}')
     print(f'[server] VOLUME_PATH={VOLUME_PATH}')
     migrate_to_volume()
     auto_start_scraper()
+
+    # ─────────── Codzienny scheduler ───────────
+    # 7:00 czasu polskiego (CEST) = 5:00 UTC
+    scheduler = BackgroundScheduler(timezone='UTC')
+    scheduler.add_job(
+        run_scraper_background,
+        CronTrigger(hour=5, minute=0, timezone='UTC'),
+        id='daily_scraper',
+        name='Codzienny scraper o 7:00 PL',
+        replace_existing=True
+    )
+    scheduler.start()
+    print('[scheduler] Codzienny scraper zaplanowany na 05:00 UTC (07:00 PL)')
+
     with socketserver.TCPServer(('', PORT), CupraHandler) as httpd:
         httpd.allow_reuse_address = True
         print(f'[server] Nasłuchuję na :{PORT}')
