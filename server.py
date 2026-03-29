@@ -26,17 +26,32 @@ def pf(filename):
     return os.path.join(VOLUME_PATH, filename)
 
 
+PERSISTENT_FILES = ['data.json', 'settings.json', 'manual_overrides.json', 'goliath_cache.json']
+
+
 def migrate_to_volume():
     """Przy pierwszym uruchomieniu kopiuje istniejące pliki do Volume."""
     if VOLUME_PATH == BASE_DIR:
         return
     os.makedirs(VOLUME_PATH, exist_ok=True)
-    for fn in ['data.json', 'settings.json', 'manual_overrides.json']:
+    for fn in PERSISTENT_FILES:
         src = os.path.join(BASE_DIR, fn)
         dst = pf(fn)
         if os.path.exists(src) and not os.path.exists(dst):
             shutil.copy2(src, dst)
             print(f'[volume] Migracja {fn} → {VOLUME_PATH}')
+
+
+def sync_from_volume():
+    """Kopiuje pliki Z Volume DO BASE_DIR żeby scraper mógł je znaleźć."""
+    if VOLUME_PATH == BASE_DIR:
+        return
+    for fn in PERSISTENT_FILES:
+        src = pf(fn)
+        dst = os.path.join(BASE_DIR, fn)
+        if os.path.exists(src):
+            shutil.copy2(src, dst)
+            print(f'[volume] Sync {fn} ← {VOLUME_PATH}')
 
 
 # ─────────── scraper log buffer ───────────
@@ -65,6 +80,8 @@ def run_scraper_background():
     def worker():
         global SCRAPER_RUNNING
         try:
+            # Sync pliki z Volume przed scrapingiem (cache + settings)
+            sync_from_volume()
             script = os.path.join(BASE_DIR, 'goliath_v11.py')
             proc = subprocess.Popen(
                 ['python3', '-u', script],
@@ -76,13 +93,14 @@ def run_scraper_background():
             proc.wait()
             log_append(f'✅ Scraper zakończony (kod: {proc.returncode})')
 
-            # Skopiuj data.json z BASE_DIR na Volume (jeśli różne ścieżki)
+            # Skopiuj wyniki scrapera na Volume (data + cache)
             if VOLUME_PATH != BASE_DIR:
-                src = os.path.join(BASE_DIR, 'data.json')
-                dst = pf('data.json')
-                if os.path.exists(src):
-                    shutil.copy2(src, dst)
-                    log_append(f'💾 data.json skopiowany na Volume ({VOLUME_PATH})')
+                for fn in PERSISTENT_FILES:
+                    src = os.path.join(BASE_DIR, fn)
+                    dst = pf(fn)
+                    if os.path.exists(src):
+                        shutil.copy2(src, dst)
+                log_append(f'💾 Pliki zsynchronizowane na Volume ({VOLUME_PATH})')
 
         except Exception as e:
             log_append(f'❌ Błąd: {e}')
@@ -313,6 +331,7 @@ if __name__ == '__main__':
     print(f'[server] CUPRA Hub v2.5 — port {PORT}')
     print(f'[server] VOLUME_PATH={VOLUME_PATH}')
     migrate_to_volume()
+    sync_from_volume()
     auto_start_scraper()
 
     # ─────────── Codzienny scheduler ───────────
