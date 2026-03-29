@@ -2,6 +2,7 @@ import http.server
 import socketserver
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -10,6 +11,31 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get('PORT', 8080))
+
+# ─────────── Railway Volume ───────────
+# Na Railway: ustaw zmienną środowiskową VOLUME_PATH=/data
+# i dodaj Volume zamontowany pod /data w dashboardzie Railway.
+# Lokalnie: pliki zostają w BASE_DIR (brak zmian).
+VOLUME_PATH = os.environ.get('VOLUME_PATH', BASE_DIR)
+
+
+def pf(filename):
+    """Zwraca pełną ścieżkę do trwałego pliku danych (na Volume)."""
+    return os.path.join(VOLUME_PATH, filename)
+
+
+def migrate_to_volume():
+    """Przy pierwszym uruchomieniu kopiuje istniejące pliki do Volume."""
+    if VOLUME_PATH == BASE_DIR:
+        return
+    os.makedirs(VOLUME_PATH, exist_ok=True)
+    for fn in ['data.json', 'settings.json', 'manual_overrides.json']:
+        src = os.path.join(BASE_DIR, fn)
+        dst = pf(fn)
+        if os.path.exists(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
+            print(f'[volume] Migracja {fn} → {VOLUME_PATH}')
+
 
 # ─────────── scraper log buffer ───────────
 SCRAPER_LOGS = []
@@ -47,6 +73,15 @@ def run_scraper_background():
                 log_append(line.rstrip())
             proc.wait()
             log_append(f'✅ Scraper zakończony (kod: {proc.returncode})')
+
+            # Skopiuj data.json z BASE_DIR na Volume (jeśli różne ścieżki)
+            if VOLUME_PATH != BASE_DIR:
+                src = os.path.join(BASE_DIR, 'data.json')
+                dst = pf('data.json')
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+                    log_append(f'💾 data.json skopiowany na Volume ({VOLUME_PATH})')
+
         except Exception as e:
             log_append(f'❌ Błąd: {e}')
         finally:
@@ -69,16 +104,16 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path in ('/', '/index.html'):
             self._serve_file('index.html', 'text/html')
         elif parsed.path == '/api/data':
-            self._serve_json_file('data.json')
+            self._serve_json_file(pf('data.json'))
         elif parsed.path == '/api/logs':
             with SCRAPER_LOCK:
                 running = SCRAPER_RUNNING
                 lines = list(SCRAPER_LOGS)
             self._send_json({'running': running, 'logs': lines})
         elif parsed.path == '/api/settings':
-            self._serve_json_file('settings.json')
+            self._serve_json_file(pf('settings.json'))
         elif parsed.path == '/api/overrides':
-            self._serve_json_file('manual_overrides.json')
+            self._serve_json_file(pf('manual_overrides.json'))
         else:
             self.send_error(404, 'Not found')
 
@@ -127,8 +162,8 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_error(404, f'{filename} not found')
 
-    def _serve_json_file(self, filename):
-        filepath = os.path.join(BASE_DIR, filename)
+    def _serve_json_file(self, filepath):
+        """Serwuje plik JSON pod podaną pełną ścieżką."""
         try:
             with open(filepath, 'rb') as f:
                 data = f.read()
@@ -142,7 +177,7 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
         except FileNotFoundError:
             # Return empty JSON for optional files
-            empty = b'{}' if filename.endswith('.json') else b'[]'
+            empty = b'{}'
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', len(empty))
@@ -166,20 +201,20 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
 
     def _save_settings(self):
-        """Zapisz settings.json."""
+        """Zapisz settings.json na Volume."""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
             data = json.loads(body.decode('utf-8'))
-            filepath = os.path.join(BASE_DIR, 'settings.json')
-            with open(filepath, 'w', encoding='utf-8') as f:
+            os.makedirs(VOLUME_PATH, exist_ok=True)
+            with open(pf('settings.json'), 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self._send_json({'success': True})
         except Exception as e:
             self._send_json({'error': str(e)}, 500)
 
     def _save_override(self):
-        """Zapisz nadpisanie ceny dla konkretnego samochodu."""
+        """Zapisz nadpisanie ceny dla konkretnego samochodu na Volume."""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
@@ -190,7 +225,8 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({'error': 'Brak otomoto_id'}, 400)
                 return
 
-            filepath = os.path.join(BASE_DIR, 'manual_overrides.json')
+            os.makedirs(VOLUME_PATH, exist_ok=True)
+            filepath = pf('manual_overrides.json')
             overrides = {}
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f:
@@ -218,7 +254,7 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({'error': str(e)}, 500)
 
     def _delete_override(self):
-        """Usuń nadpisanie dla konkretnego samochodu."""
+        """Usuń nadpisanie dla konkretnego samochodu z Volume."""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
@@ -229,7 +265,7 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({'error': 'Brak otomoto_id'}, 400)
                 return
 
-            filepath = os.path.join(BASE_DIR, 'manual_overrides.json')
+            filepath = pf('manual_overrides.json')
             overrides = {}
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f:
@@ -243,10 +279,10 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({'error': str(e)}, 500)
 
     def _clear_overrides(self):
-        """Wyczyść wszystkie nadpisania cen."""
+        """Wyczyść wszystkie nadpisania cen na Volume."""
         try:
-            filepath = os.path.join(BASE_DIR, 'manual_overrides.json')
-            with open(filepath, 'w', encoding='utf-8') as f:
+            os.makedirs(VOLUME_PATH, exist_ok=True)
+            with open(pf('manual_overrides.json'), 'w', encoding='utf-8') as f:
                 json.dump({}, f)
             self._send_json({'success': True})
         except Exception as e:
@@ -255,7 +291,11 @@ class CupraHandler(http.server.BaseHTTPRequestHandler):
 
 def auto_start_scraper():
     """Uruchom scraper przy starcie serwera jeśli brak świeżych danych."""
-    data_file = os.path.join(BASE_DIR, 'data.json')
+    data_file = pf('data.json')
+    # Fallback: sprawdź też BASE_DIR (dla lokalnego developmentu)
+    if not os.path.exists(data_file) and VOLUME_PATH != BASE_DIR:
+        data_file = os.path.join(BASE_DIR, 'data.json')
+
     should_run = True
     if os.path.exists(data_file):
         age = time.time() - os.path.getmtime(data_file)
@@ -268,7 +308,9 @@ def auto_start_scraper():
 
 
 if __name__ == '__main__':
-    print(f'[server] CUPRA Hub v2.3 — port {PORT}')
+    print(f'[server] CUPRA Hub v2.4 — port {PORT}')
+    print(f'[server] VOLUME_PATH={VOLUME_PATH}')
+    migrate_to_volume()
     auto_start_scraper()
     with socketserver.TCPServer(('', PORT), CupraHandler) as httpd:
         httpd.allow_reuse_address = True
